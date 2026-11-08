@@ -61,40 +61,51 @@ class App:
 
     # -- loading ---------------------------------------------------------
     def ensure_loaded(self, target: Model) -> None:
+        """Load ``target`` if needed, asking before unloading anything (see cards/npu-swapping.md)."""
         if target.loaded:
             return
         models = self.catalog()
-        target = next(m for m in models if m.id == target.id)
+        target = next(m for m in models if m.id == target.id)  # fresh status
         if target.loaded:
             return
-        plan = plan_swap(models, target, total=int(self.client.npu().get("npu_total") or 100))
-        if plan.unload:
-            names = ", ".join(f"{m.name} ({m.npu}%)" for m in plan.unload)
-            err.print(
-                f"[yellow]{target.name} needs {target.npu}% NPU, {plan.free_before}% free.[/] "
-                f"Unload: {names}"
-            )
-            if not self.yes and not click.confirm("Proceed?", default=True, err=True):
-                raise click.Abort()
-            for m in plan.unload:
-                err.print(f"Unloading {m.name}…")
-                self.client.stop(m.id)
+        self._make_room(models, target)
         try:
             self.load(target)
         except LoadFailed as e:
-            # NPU memory fragments: a big model may not fit after small ones even
-            # when the percentages add up. The device's own advice is to unload all.
-            others = [m for m in self.catalog() if m.loaded and m.id != target.id]
-            if not e.memory or not others:
+            if not e.memory:
                 raise
-            err.print(f"[yellow]{e}[/]\nNPU memory is fragmented. Unload all other models "
-                      f"({', '.join(m.name for m in others)}) and retry?")
-            if not self.yes and not click.confirm("Retry?", default=True, err=True):
-                raise click.Abort()
-            for m in others:
-                err.print(f"Unloading {m.name}…")
-                self.client.stop(m.id)
-            self.load(target)
+            self._retry_after_fragmentation(target, e)
+
+    def _make_room(self, models: list[Model], target: Model) -> None:
+        plan = plan_swap(models, target, total=int(self.client.npu().get("npu_total") or 100))
+        if not plan.unload:
+            return
+        names = ", ".join(f"{m.name} ({m.npu}%)" for m in plan.unload)
+        err.print(f"[yellow]{target.name} needs {target.npu}% NPU, {plan.free_before}% free.[/] "
+                  f"Unload: {names}")
+        self._confirm("Proceed?")
+        self._unload(plan.unload)
+
+    def _retry_after_fragmentation(self, target: Model, failure: LoadFailed) -> None:
+        """NPU memory fragments: a big model may not fit after small ones even when
+        the percentages add up. The device's own advice is to unload all and retry."""
+        others = [m for m in self.catalog() if m.loaded and m.id != target.id]
+        if not others:
+            raise failure
+        err.print(f"[yellow]{failure}[/]\nNPU memory is fragmented. Unload all other models "
+                  f"({', '.join(m.name for m in others)}) and retry?")
+        self._confirm("Retry?")
+        self._unload(others)
+        self.load(target)
+
+    def _confirm(self, question: str) -> None:
+        if not self.yes and not click.confirm(question, default=True, err=True):
+            raise click.Abort()
+
+    def _unload(self, models: list[Model]) -> None:
+        for m in models:
+            err.print(f"Unloading {m.name}…")
+            self.client.stop(m.id)
 
     def load(self, target: Model) -> None:
         with Progress(

@@ -46,6 +46,11 @@ class Model:
         return self.status in LOADED
 
     @property
+    def idle(self) -> bool:
+        """Loaded and serving no requests, so safe to unload."""
+        return self.loaded and self.active == 0
+
+    @property
     def vision(self) -> bool:
         return "Image" in self.inputs
 
@@ -87,28 +92,36 @@ def resolve(models: list[Model], query: str | None, task: str | None = None,
     prefer a loaded model for ``task``, else the one with the smallest NPU cost.
     """
     pool = [m for m in models if task is None or m.task == task]
-    if not query and default:
-        query = default
+    query = query or default
     if not query:
-        if not pool:
-            raise ResolveError(f"No installed model can do '{task}'.")
-        loaded = [m for m in pool if m.loaded]
-        return min(loaded or pool, key=lambda m: m.npu)
+        return _pick_default(pool, task)
+    model = _match(models, query, pool)
+    if task and model.task != task:
+        raise ResolveError(f"{model.name} is a {model.type} model, not usable for '{task}'.")
+    return model
 
+
+def _pick_default(pool: list[Model], task: str | None) -> Model:
+    if not pool:
+        raise ResolveError(f"No installed model can do '{task}'.")
+    loaded = [m for m in pool if m.loaded]
+    return min(loaded or pool, key=lambda m: m.npu)
+
+
+def _match(models: list[Model], query: str, pool: list[Model]) -> Model:
+    """Try exact id, then exact name, then id substring; the first unique hit wins."""
     q = query.lower()
-    for match in (
+    rules = (
         lambda m: m.id.lower() == q,
         lambda m: m.name.lower() == q,
         lambda m: q in m.id.lower(),
-    ):
-        hits = [m for m in models if match(m)]
-        if len(hits) == 1:
-            m = hits[0]
-            if task and m.task != task:
-                raise ResolveError(f"{m.name} is a {m.type} model, not usable for '{task}'.")
-            return m
+    )
+    for rule in rules:
+        hits = [m for m in models if rule(m)]
         if len(hits) > 1:
             raise ResolveError(f"'{query}' is ambiguous: {', '.join(h.name for h in hits)}")
+        if hits:
+            return hits[0]
     names = ", ".join(m.name for m in pool or models)
     raise ResolveError(f"No model matches '{query}'. Installed: {names}")
 
@@ -118,35 +131,34 @@ class SwapPlan:
     target: Model
     unload: list[Model]
     free_before: int
-    total: int
-
-    @property
-    def needed(self) -> bool:
-        return not self.target.loaded
 
 
 def plan_swap(models: list[Model], target: Model, total: int = 100) -> SwapPlan:
     """Decide which loaded models to unload so ``target`` fits in the NPU budget."""
-    used = sum(m.npu for m in models if m.loaded or m.status in LOADING)
-    free = total - used
+    free = total - sum(m.npu for m in models if m.loaded or m.status in LOADING)
     if target.loaded:
-        return SwapPlan(target, [], free, total)
+        return SwapPlan(target, [], free)
     if target.npu > total:
         raise ResolveError(f"{target.name} needs {target.npu}% NPU, more than the device has.")
+    victims = _lru_victims(models, target, free)
+    if free + sum(m.npu for m in victims) < target.npu:
+        raise ResolveError(_cannot_free_message(models, target))
+    return SwapPlan(target, victims, free)
+
+
+def _lru_victims(models: list[Model], target: Model, free: int) -> list[Model]:
+    """Idle loaded models, least recently used first, until ``target`` would fit."""
+    idle = sorted((m for m in models if m.idle and m.id != target.id),
+                  key=lambda m: m.last_used)
     victims: list[Model] = []
-    candidates = sorted(
-        (m for m in models if m.loaded and m.id != target.id and m.active == 0),
-        key=lambda m: m.last_used,
-    )
-    for m in candidates:
+    for m in idle:
         if free >= target.npu:
             break
         victims.append(m)
         free += m.npu
-    if free < target.npu:
-        busy = ", ".join(m.name for m in models if m.loaded and m.active)
-        raise ResolveError(
-            f"Cannot free {target.npu}% NPU for {target.name}"
-            + (f"; busy models: {busy}" if busy else "")
-        )
-    return SwapPlan(target, victims, total - used, total)
+    return victims
+
+
+def _cannot_free_message(models: list[Model], target: Model) -> str:
+    busy = ", ".join(m.name for m in models if m.loaded and m.active)
+    return f"Cannot free {target.npu}% NPU for {target.name}" + (f"; busy models: {busy}" if busy else "")
