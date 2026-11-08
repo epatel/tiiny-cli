@@ -9,7 +9,9 @@ How `tai` decides which models to unload so the requested one can load, and the 
 - **The percentages lie under fragmentation.** Loading the coder (94) with only 3% in use still failed with `Cannot allocate memory` / `ioctl ALLOC … failed` (container exit 134), and the device's `toast.message` said "Please unload all models and reload". Loading the big model first and the small ones afterwards works.
 - A load takes about 5–60 s; the SSE stream reports progress.
 
-## Algorithm (`src/tai/models.py: plan_swap`, `src/tai/cli.py: App.ensure_loaded`)
+## Algorithm (`src/tai/models.py: plan_swap`, `src/tai/loader.py: ModelLoader.ensure_loaded`)
+
+`ModelLoader` is UI-independent: it asks a `LoaderUI` (`confirm`, `info`, `progress`). The CLI's `CliLoaderUI` (in `cli.py`, used by `App.ensure_loaded`) prints to stderr and uses `click.confirm`; `-y` answers yes. The agent's `TuiLoaderUI` shows a modal and the status line. Declining raises `LoadCancelled` (the CLI turns it into `click.Abort`).
 
 ```mermaid
 flowchart TD

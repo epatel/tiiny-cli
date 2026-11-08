@@ -128,6 +128,24 @@ class TiinyClient:
     def stop(self, model_id: str) -> dict:
         return self._json("POST", f"/api/v1/models/{model_id}/stop")
 
+    # -- device ----------------------------------------------------------
+    def sys_status(self) -> dict:
+        """CPU, memory, NPU and disk utilisation."""
+        return self._json("GET", "/api/v1/sys/status")
+
+    def device_info(self) -> dict:
+        """Model name, OS version, hardware specs (slow: ~1-2 s)."""
+        return self._json("GET", "/api/v1/sys/device_info")
+
+    def storage(self) -> dict:
+        return self._json("GET", "/api/v1/sys/storage")
+
+    def reboot(self) -> dict:
+        return self._json("POST", "/api/v1/sys/reboot/")
+
+    def shutdown(self) -> dict:
+        return self._json("POST", "/api/v1/sys/shutdown/")
+
     # -- inference -------------------------------------------------------
     def chat(self, model: str, messages: list[dict], **extra) -> dict:
         body = {"model": model, "messages": messages, "stream": False, **extra}

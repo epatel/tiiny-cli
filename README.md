@@ -43,6 +43,7 @@ tai 3d toy.png --faces 200000 -o toy.glb       # ~15 min, image → textured mes
 
 tai agent                   # coding agent (full-screen) in the current folder
 tai agent "fix the failing test"   # start with a task; -c continues here
+                            # inside: /tiiny status|models|load|unload|restart|shutdown
 tai mcp                     # MCP servers the agent uses (.mcp.json, ~/.config/tai/mcp.json)
 tai skills                  # skills it can use (.claude/skills, ~/.claude/skills, ~/.config/tai/skills)
 

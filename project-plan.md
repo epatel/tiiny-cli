@@ -19,8 +19,10 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
   - [x] sessions persisted (migration 3: session kind/cwd, full message JSON)
   - [x] textual TUI (log, input, permission modal, interrupt) + pilot tests
   - [ ] live run on the device, by the user (scripted auto-approval is blocked by the harness)
+  - [x] `/tiiny` in the TUI: status, models, load/unload, restart/shutdown (loader split into `loader.py` with a CLI and a TUI `LoaderUI`)
+  - [x] Multi-line prompt (`PromptArea`): Enter sends; Ctrl+J / Alt+Enter / `\`+Enter add a newline; pastes keep newlines
   - [x] MCP servers (Claude Code `.mcp.json` format + `~/.config/tai/mcp.json`; ask unless readOnlyHint) and skills (`.claude/skills`, `~/.claude/skills`, `~/.config/tai/skills`), plus `tai mcp` / `tai skills`
-  - Later: context compaction for long sessions, /model inside the TUI, multi-line input, MCP over HTTP verified against a real server, MCP OAuth
+  - Later: context compaction for long sessions, /model inside the TUI, MCP over HTTP verified against a real server, MCP OAuth
 - [ ] M5 — Polish: `tai serve` (OpenAI-compatible local proxy that auto-loads models)? shell completion? OCR/rerank if models get installed
 
 ## Decisions
@@ -35,7 +37,7 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
 - 2026-11-08 — Chat history is persisted text-only. Images attached in a past turn are not re-sent on resume.
 
 ## Current state / handoff
-All seven installed models were exercised live through `tai`: chat (Qwen3-Coder-Next, Qwen3.6 incl. vision and thinking toggle), Z-Image-Turbo, OmniVoice (incl. `instruct`), Qwen3-ASR, Qwen3-Embedding and TRELLIS 3D (shape→texture→export, and `tai 3d --faces 200000` → 16 MB GLB in ~7 min). 112 unit tests pass (no device needed; the MCP tests start a real stdio test server). `tai agent` is built and fully tested headlessly, but has not had a live run yet: it needs the user at the keyboard. After testing, the device state was left as is (the user said not to reload the coder model).
+All seven installed models were exercised live through `tai`: chat (Qwen3-Coder-Next, Qwen3.6 incl. vision and thinking toggle), Z-Image-Turbo, OmniVoice (incl. `instruct`), Qwen3-ASR, Qwen3-Embedding and TRELLIS 3D (shape→texture→export, and `tai 3d --faces 200000` → 16 MB GLB in ~7 min). 126 unit tests pass (no device needed; the MCP tests start a real stdio test server). `tai agent` is built and fully tested headlessly, but has not had a live run yet: it needs the user at the keyboard. After testing, the device state was left as is (the user said not to reload the coder model).
 
 ## Open questions
 - Do the TRELLIS controls (`seed`, `inference_quality`) belong in `params` at submit time? `tai 3d --quality/--seed` sends them there; this is untested.

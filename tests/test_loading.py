@@ -3,7 +3,8 @@
 import click
 import pytest
 
-from tai.cli import App, LoadFailed
+from tai.cli import App
+from tai.loader import LoadFailed
 
 OOM = {"_event": "done", "success": False,
        "startup_error": "Container exited; Cannot allocate memory", "toast": {"message": "unload all"}}

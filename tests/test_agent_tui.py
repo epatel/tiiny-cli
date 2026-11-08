@@ -175,3 +175,125 @@ def test_json_preview_for_mcp_calls(tmp_path):
     from tai.agent.tools import Preview
     screen = PermissionScreen(Preview("MCP srv · write", '{"x": 1}', "json"))
     assert screen.preview.kind == "json"
+
+
+async def type_text(pilot, text):
+    for ch in text:
+        await pilot.press({" ": "space", "\\": "backslash"}.get(ch, ch))
+
+
+def test_multiline_input_newline_keys_and_send(tmp_path):
+    from tai.agent.tui import PromptArea
+
+    async def main():
+        app = make_app(tmp_path, text_reply("got it"))
+        async with app.run_test(size=(100, 30)) as pilot:
+            area = app.query_one(PromptArea)
+            await pilot.click("#prompt")
+            await type_text(pilot, "first")
+            await pilot.press("ctrl+j")
+            await type_text(pilot, "second\\")
+            await pilot.press("enter")  # trailing backslash: newline, not send
+            await type_text(pilot, "third")
+            await pilot.press("alt+enter")
+            await type_text(pilot, "fourth")
+            assert area.text == "first\nsecond\nthird\nfourth" and not app.busy
+            await pilot.press("enter")
+            await wait_until(pilot, lambda: not app.busy and "got it" in texts(app))
+            assert app.agent.messages[0]["content"] == "first\nsecond\nthird\nfourth"
+            assert area.text == ""
+            assert "› first\nsecond\nthird\nfourth" in texts(app)
+    run(main())
+
+
+def test_pasted_newlines_are_kept_and_not_sent(tmp_path):
+    from textual import events
+
+    from tai.agent.tui import PromptArea
+
+    async def main():
+        app = make_app(tmp_path, text_reply("ok"))
+        async with app.run_test(size=(100, 30)) as pilot:
+            area = app.query_one(PromptArea)
+            area.focus()
+            app.post_message(events.Paste("line one\nline two\n"))  # as the terminal driver does
+            await pilot.pause()
+            assert area.text == "line one\nline two\n" and not app.busy
+            await pilot.press("enter")
+            await wait_until(pilot, lambda: not app.busy and "ok" in texts(app))
+            assert app.agent.messages[0]["content"] == "line one\nline two"  # trimmed
+    run(main())
+
+
+def test_blank_enter_sends_nothing(tmp_path):
+    from tai.agent.tui import PromptArea
+
+    async def main():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.click("#prompt")
+            await pilot.press("ctrl+j", "enter")
+            await pilot.pause()
+            assert app.agent.messages == [] and app.query_one(PromptArea).text == ""
+    run(main())
+
+
+class DeviceClient(FakeClient):
+    """FakeClient plus the device endpoints /tiiny uses."""
+
+    def __init__(self, *replies):
+        super().__init__(*replies)
+        self.calls = []
+
+    def models(self):
+        return [{"id": "q/Coder", "display_name": "Coder", "type": "Text Generation", "npu_usage": 94,
+                 "status": "running"}]
+
+    def running(self):
+        return {"instances": {"running": [{"model_id": "q/Coder", "status": "running"}]}}
+
+    def shutdown(self):
+        self.calls.append("shutdown")
+
+
+def make_device_app(root):
+    cfg = AgentConfig(model_id="q/Coder", system="SYS", ctx=ToolContext(root=root.resolve()))
+    agent = Agent(DeviceClient(), cfg, lambda *a: Decision.DENY, Transcript())
+    return AgentApp(agent, AppInfo("t"))
+
+
+async def tiiny(pilot, app, line, answer=None):
+    """Send `/tiiny <line>`, answer its confirmation with ``answer`` (y/n) if given, wait for it."""
+    from tai.agent.tui import ConfirmScreen
+    await send(pilot, f"/tiiny {line}")
+    if answer:
+        await wait_until(pilot, lambda: isinstance(app.screen, ConfirmScreen))
+        question = app.screen.question
+        await pilot.press(answer)
+    else:
+        question = None
+    await wait_until(pilot, lambda: not app.device_busy)
+    return question
+
+
+def test_tiiny_models_and_shutdown_confirmation(tmp_path):
+    async def main():
+        app = make_device_app(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await tiiny(pilot, app, "models")
+            assert "| ● | Coder *(agent)* | chat | 94% |" in texts(app)
+            question = await tiiny(pilot, app, "shutdown", answer="n")
+            assert "Shut down the Tiiny?" in question
+            assert app.agent.client.calls == [] and "Cancelled." in texts(app)
+            await tiiny(pilot, app, "shutdown", answer="y")
+            assert app.agent.client.calls == ["shutdown"] and "Shutting down the Tiiny." in texts(app)
+    run(main())
+
+
+def test_tiiny_errors_are_shown_not_raised(tmp_path):
+    async def main():
+        app = make_device_app(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await tiiny(pilot, app, "load llama")
+            assert "**error:** No model matches 'llama'" in texts(app)
+    run(main())

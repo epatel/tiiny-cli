@@ -23,8 +23,9 @@ from tai.chat import ChatSession, SessionState, user_message
 from tai.client import TiinyClient, TiinyError
 from tai.config import ConfigError, data_dir, load_settings
 from tai.db import Store
+from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
-from tai.models import Model, ResolveError, build_catalog, plan_swap, resolve
+from tai.models import Model, ResolveError, build_catalog, resolve
 from tai.options import AgentRequest, AskOutput, ChatOptions, Question, SessionRef, bundle, chat_options
 
 out = Console()
@@ -71,81 +72,32 @@ class App:
     # -- loading ---------------------------------------------------------
     def ensure_loaded(self, target: Model) -> None:
         """Load ``target`` if needed, asking before unloading anything (see cards/npu-swapping.md)."""
-        if target.loaded:
-            return
-        models = self.catalog()
-        target = next(m for m in models if m.id == target.id)  # fresh status
-        if target.loaded:
-            return
-        self._make_room(models, target)
         try:
-            self.load(target)
-        except LoadFailed as e:
-            if not e.memory:
-                raise
-            self._retry_after_fragmentation(target, e)
-
-    def _make_room(self, models: list[Model], target: Model) -> None:
-        plan = plan_swap(models, target, total=int(self.client.npu().get("npu_total") or 100))
-        if not plan.unload:
-            return
-        names = ", ".join(f"{m.name} ({m.npu}%)" for m in plan.unload)
-        err.print(f"[yellow]{target.name} needs {target.npu}% NPU, {plan.free_before}% free.[/] "
-                  f"Unload: {names}")
-        self._confirm("Proceed?")
-        self._unload(plan.unload)
-
-    def _retry_after_fragmentation(self, target: Model, failure: LoadFailed) -> None:
-        """NPU memory fragments: a big model may not fit after small ones even when
-        the percentages add up. The device's own advice is to unload all and retry."""
-        others = [m for m in self.catalog() if m.idle and m.id != target.id]  # never busy ones
-        if not others:
-            raise failure
-        err.print(f"[yellow]{failure}[/]\nNPU memory is fragmented. Unload all other models "
-                  f"({', '.join(m.name for m in others)}) and retry?")
-        self._confirm("Retry?")
-        self._unload(others)
-        self.load(target)
-
-    def _confirm(self, question: str) -> None:
-        if not self.yes and not click.confirm(question, default=True, err=True):
-            raise click.Abort()
-
-    def _unload(self, models: list[Model]) -> None:
-        for m in models:
-            err.print(f"Unloading {m.name}…")
-            self.client.stop(m.id)
-
-    def load(self, target: Model) -> None:
-        with Progress(
-            TextColumn("[bold]Loading {task.fields[name]}"), BarColumn(),
-            TextColumn("{task.percentage:>3.0f}%"), TextColumn("[dim]{task.fields[msg]}"),
-            TimeElapsedColumn(), console=err, transient=True,
-        ) as prog:
-            tid = prog.add_task("load", total=100, name=target.name, msg="")
-            last: dict = {}
-            for ev in self.client.launch(target.id):
-                last = ev
-                prog.update(tid, completed=float(ev.get("progress") or 0),
-                            msg=(ev.get("startup_message") or ev.get("message") or "")[:50])
-                if ev.get("error"):
-                    raise LoadFailed(target, ev)
-        if last.get("_event") == "done" and last.get("success") is False:
-            raise LoadFailed(target, last)
-        err.print(f"[green]Loaded {target.name}[/]")
+            ModelLoader(self.client, CliLoaderUI(self.yes)).ensure_loaded(target)
+        except LoadCancelled:
+            raise click.Abort() from None
 
 
-class LoadFailed(TiinyError):
-    """A model failed to start. ``memory`` is True for NPU allocation failures."""
+class CliLoaderUI:
+    """Terminal prompts and a transient progress bar on stderr."""
 
-    def __init__(self, target: Model, ev: dict):
-        detail = ev.get("error") or ev.get("startup_error") or ev.get("message") or ""
-        self.memory = "allocate memory" in detail or "ALLOC" in detail
-        toast = (ev.get("toast") or {}).get("message")
-        short = detail.split(";")[0].strip() or "unknown error"
-        super().__init__(f"Loading {target.name} failed: {short}"
-                         + (" (NPU out of memory)" if self.memory else "")
-                         + (f" — device says: {toast}" if toast else ""))
+    def __init__(self, yes: bool):
+        self.yes = yes
+
+    def confirm(self, question: str) -> bool:
+        err.print(f"[yellow]{question}[/]", highlight=False)
+        return self.yes or click.confirm("Proceed?", default=True, err=True)
+
+    def info(self, message: str) -> None:
+        err.print(f"[green]{message}[/]" if message.startswith("Loaded") else message, highlight=False)
+
+    @contextmanager
+    def progress(self, name: str):
+        with Progress(TextColumn("[bold]Loading {task.fields[name]}"), BarColumn(),
+                      TextColumn("{task.percentage:>3.0f}%"), TextColumn("[dim]{task.fields[msg]}"),
+                      TimeElapsedColumn(), console=err, transient=True) as prog:
+            tid = prog.add_task("load", total=100, name=name, msg="")
+            yield lambda pct, msg: prog.update(tid, completed=pct, msg=msg[:50])
 
 
 pass_app = click.make_pass_decorator(App)
