@@ -14,7 +14,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "respx>=0.21"]
+dev = [
+    "pytest>=8",
+    "respx>=0.21",
+    "aihealth @ git+https://github.com/epatel/ai-health@v0.2.1",
+]
 
 [project.scripts]
 tai = "tai.cli:main"

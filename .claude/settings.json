@@ -14,10 +14,21 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command",
+            "command": "a=\"$CLAUDE_PROJECT_DIR/.venv/bin/aihealth\"; [ -x \"$a\" ] && \"$a\" hook post-edit || true" }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/tests-on-stop.sh" }
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/tests-on-stop.sh" },
+          { "type": "command",
+            "command": "a=\"$CLAUDE_PROJECT_DIR/.venv/bin/aihealth\"; [ -x \"$a\" ] && \"$a\" hook stop || true" }
         ]
       }
     ]

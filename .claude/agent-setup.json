@@ -2,7 +2,14 @@
   "source": "https://ai.memention.net/setup",
   "version": "2026-11-08",
   "updated": "2026-11-08",
-  "applied": ["known-stack", "context-cards", "standing-defaults", "project-plan", "hooks-over-prose"],
+  "applied": [
+    "known-stack",
+    "context-cards",
+    "standing-defaults",
+    "project-plan",
+    "hooks-over-prose",
+    "code-health"
+  ],
   "declined": [],
   "copied": {
     "cards/standing-defaults.md": {
