@@ -25,13 +25,13 @@ from tai.config import ConfigError, data_dir, load_settings
 from tai.db import Store
 from tai.mesh import Mesh3D, MeshOptions
 from tai.models import Model, ResolveError, build_catalog, plan_swap, resolve
-from tai.options import AskOutput, ChatOptions, Question, SessionRef, bundle, chat_options
+from tai.options import AgentRequest, AskOutput, ChatOptions, Question, SessionRef, bundle, chat_options
 
 out = Console()
 err = Console(stderr=True)
 
 SETTING_KEYS = {
-    "default.chat", "default.image", "default.tts", "default.asr", "default.embed", "default.3d",
+    "default.chat", "default.agent", "default.image", "default.tts", "default.asr", "default.embed", "default.3d",
     "think",  # on|off — default thinking mode for models that can toggle it
     "tts.instruct",  # default voice-design instruct, e.g. "female, british accent"
 }
@@ -58,6 +58,11 @@ class App:
 
     def catalog(self) -> list[Model]:
         return build_catalog(self.client.models(), self.client.running())
+
+    def agent_model(self, query: str | None) -> Model:
+        """A chat model that supports tool use (for `tai agent`)."""
+        tool_models = [m for m in self.catalog() if m.task == "chat" and m.tools]
+        return resolve(tool_models, query, "chat", default=self.store.get_setting("default.agent"))
 
     def model_for(self, task: str, query: str | None) -> Model:
         models = self.catalog()
@@ -253,7 +258,9 @@ def config_cmd(ctx):
 @pass_app
 def config_set(app: App, key, value):
     """Set KEY to VALUE. Model defaults accept any unique model name."""
-    if key.startswith("default."):
+    if key == "default.agent":
+        value = app.agent_model(value).id
+    elif key.startswith("default."):
         value = resolve(app.catalog(), value, task=key.split(".", 1)[1]).id
     elif key == "think" and value not in ("on", "off"):
         raise click.BadParameter("think must be on or off")
@@ -396,11 +403,80 @@ def _resume_session(app: App, ref: str | None, opts: ChatOptions) -> SessionStat
     row = store.find_session(ref) if ref else store.last_session()
     if not row:
         raise click.UsageError("No such session.")
+    if row["kind"] != "chat":
+        raise click.UsageError(f"Session {row['id']} is an {row['kind']} session; use `tai {row['kind']} -r`.")
     messages = [{"role": r["role"], "content": r["content"]} for r in store.messages(row["id"])]
     label = f" {row['name']}" if row["name"] else ""
     err.print(f"[dim]Resumed session {row['id']}{label} ({len(messages)} messages)[/]")
     return SessionState(row["id"], app.model_for("chat", opts.model or row["model"]),
                         opts.system or row["system"], messages=messages)
+
+
+@cli.command()
+@click.argument("task", nargs=-1)
+@click.option("-m", "--model", help="Tool-capable chat model (default: default.agent, else a loaded one).")
+@click.option("-r", "--resume", help="Resume an agent session by id.")
+@click.option("-c", "--continue", "cont", is_flag=True, help="Continue the latest agent session in this folder.")
+@click.option("--no-mcp", is_flag=True, help="Don't connect to MCP servers.")
+@bundle("req", AgentRequest, "task", "model", "resume", "cont", "no_mcp")
+@pass_app
+def agent(app: App, req: AgentRequest):
+    """Coding agent in a full-screen UI: reads, edits and runs commands in this folder.
+
+    Asks before every edit (shows the diff), shell command and non-read-only MCP tool.
+    Uses MCP servers from .mcp.json / ~/.config/tai/mcp.json and skills from .claude/skills,
+    ~/.claude/skills and ~/.config/tai/skills. TASK, if given, is sent first."""
+    from tai.agent.command import run_agent  # textual loads only for this command
+
+    run_agent(app, req)
+
+
+@cli.command("mcp")
+def mcp_cmd():
+    """Connect to the MCP servers `tai agent` would use and list their tools."""
+    from tai.agent import mcp_client
+
+    root = Path.cwd().resolve()
+    servers, problems = mcp_client.load_config(root)
+    for p in problems:
+        err.print(f"[yellow]config problem:[/] {p}")
+    if not servers:
+        out.print("No MCP servers configured. Add them to .mcp.json (project) or ~/.config/tai/mcp.json.")
+        return
+    hub = mcp_client.McpHub(servers, root, data_dir() / "logs")
+    with err.status("Connecting…"):
+        hub.start()
+    try:
+        for state in hub.states.values():
+            _print_server(state)
+    finally:
+        hub.close()
+
+
+def _print_server(s) -> None:
+    where = s.config.url or " ".join([s.config.command or "", *s.config.args])
+    if s.error:
+        out.print(f"[red]✗[/] [bold]{s.config.name}[/] [dim]{where}[/]\n    {s.error}")
+        return
+    out.print(f"[green]●[/] [bold]{s.config.name}[/] [dim]{where}[/]")
+    for t in s.tools:
+        ro = " [dim](read-only)[/]" if t.read_only else ""
+        first = t.description.splitlines()[0][:70] if t.description else ""
+        out.print(f"    {t.name}{ro}  [dim]{first}[/]")
+
+
+@cli.command("skills")
+def skills_cmd():
+    """List the skills `tai agent` can use."""
+    from tai.agent import skills
+
+    found = skills.discover(Path.cwd().resolve())
+    if not found:
+        dirs = ", ".join(str(d) for d in skills.skill_dirs(Path.cwd()))
+        out.print(f"No skills found. Looked in: {dirs}")
+        return
+    for s in found:
+        out.print(f"[bold]{s.name}[/]  [dim]{s.folder}[/]\n    {s.description[:160]}")
 
 
 @cli.group(invoke_without_command=True)
@@ -411,11 +487,11 @@ def history(ctx):
         return
     app: App = ctx.obj
     t = Table(box=None, header_style="bold")
-    for col in ("ID", "Name", "Model", "Msgs", "Updated", "First message"):
+    for col in ("ID", "Kind", "Name", "Model", "Msgs", "Updated", "First message"):
         t.add_column(col)
     for s in app.store.sessions():
         first = (s["first"] or "").replace("\n", " ")
-        t.add_row(str(s["id"]), s["name"] or "", s["model"].split("/")[-1], str(s["n"]),
+        t.add_row(str(s["id"]), s["kind"], s["name"] or "", s["model"].split("/")[-1], str(s["n"]),
                   time.strftime("%Y-%m-%d %H:%M", time.localtime(s["updated_at"])),
                   first[:50] + ("…" if len(first) > 50 else ""))
     out.print(t)

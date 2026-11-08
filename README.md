@@ -41,6 +41,11 @@ tai asr recording.wav
 tai embed "first text" "second text"           # JSON lines
 tai 3d toy.png --faces 200000 -o toy.glb       # ~15 min, image → textured mesh
 
+tai agent                   # coding agent (full-screen) in the current folder
+tai agent "fix the failing test"   # start with a task; -c continues here
+tai mcp                     # MCP servers the agent uses (.mcp.json, ~/.config/tai/mcp.json)
+tai skills                  # skills it can use (.claude/skills, ~/.claude/skills, ~/.config/tai/skills)
+
 tai status                  # NPU usage
 tai load qwen3.6            # pre-load; tai unload --all
 tai config set default.chat coder              # preferred model per task

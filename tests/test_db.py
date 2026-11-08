@@ -45,3 +45,31 @@ def test_sessions_and_messages(tmp_path):
     assert s.sessions()[0]["n"] == 2 and s.sessions()[0]["first"] == "hi"
     s.delete_session(sid)
     assert s.messages(sid) == []
+
+
+def test_upgrade_from_v2_marks_old_sessions_as_chat(tmp_path):
+    path = tmp_path / "t.db"
+    conn = sqlite3.connect(path)
+    for i, sql in enumerate(MIGRATIONS[:2]):
+        conn.executescript(f"BEGIN; {sql}; PRAGMA user_version = {i + 1}; COMMIT;")
+    conn.execute("INSERT INTO session(model, created_at, updated_at) VALUES ('m', 0, 0)")
+    conn.commit()
+    conn.close()
+    s = Store(path)
+    row = s.find_session("1")
+    assert row["kind"] == "chat" and row["cwd"] is None
+
+
+def test_agent_sessions_store_full_messages(tmp_path):
+    s = Store(tmp_path / "t.db")
+    chat = s.create_session("m")
+    sid = s.create_agent_session("m", "/proj")
+    call = {"role": "assistant", "content": None,
+            "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "read", "arguments": "{}"}}]}
+    for msg in ({"role": "user", "content": "hi"}, call, {"role": "tool", "tool_call_id": "c1", "content": "x"}):
+        s.add_raw_message(sid, msg)
+    assert s.raw_messages(sid)[1] == call
+    assert [m["content"] for m in s.messages(sid)] == ["hi", "read", "x"]  # text summaries
+    assert s.last_session()["id"] == chat  # chat -c never picks agent sessions
+    assert s.last_session("agent", "/proj")["id"] == sid
+    assert s.last_session("agent", "/other") is None

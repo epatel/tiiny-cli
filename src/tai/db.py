@@ -35,6 +35,13 @@ MIGRATIONS = [
     """,
     # 2: user preferences (e.g. default.chat = Qwen/Qwen3-Coder-Next)
     "CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    # 3: agent sessions — a session kind and working directory, and the full
+    #    message JSON (tool calls / tool results) alongside the text summary
+    """
+    ALTER TABLE session ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat';
+    ALTER TABLE session ADD COLUMN cwd TEXT;
+    ALTER TABLE message ADD COLUMN data TEXT
+    """,
 ]
 
 
@@ -52,7 +59,9 @@ def migrate(conn: sqlite3.Connection) -> int:
 
 class Store:
     def __init__(self, path: Path | str):
-        self.conn = sqlite3.connect(str(path))
+        # check_same_thread=False: `tai agent` saves messages from its worker thread;
+        # writes never overlap (the UI only touches the store while the agent is idle).
+        self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         migrate(self.conn)
@@ -93,8 +102,21 @@ class Store:
                 return row
         return self.conn.execute("SELECT * FROM session WHERE name = ?", (ref,)).fetchone()
 
-    def last_session(self) -> sqlite3.Row | None:
-        return self.conn.execute("SELECT * FROM session ORDER BY updated_at DESC LIMIT 1").fetchone()
+    def create_agent_session(self, model: str, cwd: str) -> int:
+        now = time.time()
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO session(model, kind, cwd, created_at, updated_at) VALUES (?,?,?,?,?)",
+                (model, "agent", cwd, now, now),
+            )
+        return cur.lastrowid
+
+    def last_session(self, kind: str = "chat", cwd: str | None = None) -> sqlite3.Row | None:
+        """Most recent session of ``kind``; for agent sessions, optionally in ``cwd``."""
+        sql, args = "SELECT * FROM session WHERE kind = ?", [kind]
+        if cwd is not None:
+            sql, args = sql + " AND cwd = ?", args + [cwd]
+        return self.conn.execute(sql + " ORDER BY updated_at DESC LIMIT 1", args).fetchone()
 
     def sessions(self, limit: int = 20) -> list[sqlite3.Row]:
         return self.conn.execute(
@@ -125,6 +147,24 @@ class Store:
                 (session_id, role, content, json.dumps(attachments) if attachments else None, now),
             )
             self.conn.execute("UPDATE session SET updated_at = ? WHERE id = ?", (now, session_id))
+
+    def add_raw_message(self, session_id: int, msg: dict) -> None:
+        """Store a full chat-completions message (agent sessions), with a text summary."""
+        summary = msg.get("content") or ", ".join(
+            tc["function"]["name"] for tc in msg.get("tool_calls") or []) or ""
+        now = time.time()
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO message(session_id, role, content, data, created_at) VALUES (?,?,?,?,?)",
+                (session_id, msg["role"], summary, json.dumps(msg), now),
+            )
+            self.conn.execute("UPDATE session SET updated_at = ? WHERE id = ?", (now, session_id))
+
+    def raw_messages(self, session_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT role, content, data FROM message WHERE session_id = ? ORDER BY id", (session_id,))
+        return [json.loads(r["data"]) if r["data"] else {"role": r["role"], "content": r["content"]}
+                for r in rows]
 
     def messages(self, session_id: int) -> list[sqlite3.Row]:
         return self.conn.execute(

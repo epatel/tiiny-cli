@@ -12,13 +12,14 @@ These are standard and used the standard way. There are no cards for them: read 
 - **httpx** (sync): all HTTP is in `src/tai/client.py` (`TiinyClient`). SSE is parsed by `iter_sse`. No OpenAI SDK.
 - **rich**: `out` (stdout) for results, `err` (stderr) for progress and prompts, so stdout stays pipeable. Streamed chat text goes straight to `sys.stdout`.
 - **sqlite3**: `src/tai/db.py`, `PRAGMA user_version` + an append-only `MIGRATIONS` list. The DB lives at `$TAI_HOME/tai.db` (default `~/.local/share/tai/`).
+- **textual** (only `tai agent`): `src/tai/agent/tui.py`. Pilot tests in `tests/test_agent_tui.py`.
 - **pytest + respx**: `tests/` mocks HTTP; no device is needed. Live checks are manual `tai …` runs.
 
 ## Commands
 
 `make help` lists the targets:
 - Setup: `make setup` (creates `.venv`, installs with dev extras)
-- Run: `.venv/bin/tai --help` (e.g. `.venv/bin/tai models`, `.venv/bin/tai ask "hi"`)
+- Run: `.venv/bin/tai --help` (e.g. `.venv/bin/tai models`, `.venv/bin/tai ask "hi"`, `.venv/bin/tai agent` in a project folder)
 - Test: `make test` (one test: `.venv/bin/pytest tests/test_models.py::test_swap_unloads_the_least_npu_that_makes_room`)
 - Before committing: `make check` (tests + `aihealth delta`). `make scan` gives a project health overview
 - Put `tai` on PATH: `make link` (symlink in `~/.local/bin`); `make clean` removes caches
@@ -35,6 +36,7 @@ Enforced by hooks (`.claude/settings.json`): `pip install` outside `.venv/bin/` 
 
 ### Domains
 - [device-api](cards/device-api.md) — calling or debugging any device endpoint, adding a new model type/task, or an HTTP error from the device
+- [agent](cards/agent.md) — anything in `src/tai/agent/` (`tai agent`, `tai mcp`, `tai skills`): tools, the loop, permissions, the TUI, agent sessions, MCP servers, skills
 - [npu-swapping](cards/npu-swapping.md) — anything about loading/unloading models, NPU budget, "Cannot allocate memory", or which model is picked by default
 
 ### Decisions

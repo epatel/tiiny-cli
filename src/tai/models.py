@@ -35,6 +35,7 @@ class Model:
     status: str
     inputs: list[str] = field(default_factory=list)
     thinking: dict = field(default_factory=dict)
+    supported: list[str] = field(default_factory=list)  # e.g. ["Tool Use", "Reasoning"]
     last_used: float = 0.0  # from running instances (use_time); 0 if unknown
     active: int = 0  # active_request_count
 
@@ -52,6 +53,10 @@ class Model:
         return self.loaded and self.active == 0
 
     @property
+    def tools(self) -> bool:
+        return "Tool Use" in self.supported
+
+    @property
     def vision(self) -> bool:
         return "Image" in self.inputs
 
@@ -65,6 +70,7 @@ class Model:
             status=d.get("status", ""),
             inputs=[s.strip() for s in (d.get("input") or "").split(",") if s.strip()],
             thinking=d.get("thinking") or {},
+            supported=list(d.get("supported") or []),
         )
 
 

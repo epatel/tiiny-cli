@@ -64,3 +64,21 @@ class SessionRef:
     @property
     def resuming(self) -> bool:
         return bool(self.resume or self.cont)
+
+
+@dataclass(frozen=True)
+class AgentRequest:
+    """`tai agent` options."""
+    task: tuple[str, ...] = ()
+    model: str | None = None
+    resume: str | None = None
+    cont: bool = False
+    no_mcp: bool = False
+
+    @property
+    def text(self) -> str | None:
+        return " ".join(self.task) or None
+
+    @property
+    def session(self) -> SessionRef:
+        return SessionRef(resume=self.resume, cont=self.cont)
