@@ -23,13 +23,13 @@ flowchart TD
   F --> L
   L --> G{NPU alloc failure?}
   G -->|no| Z
-  G -->|yes| H[offer: unload ALL others, retry once]
+  G -->|yes| H[offer: unload all other idle models, retry once]
   H --> L2[launch M] --> Z
 ```
 
 - LRU order comes from `last_inference_time`, falling back to `use_time`, both from `/api/v1/models/running`.
 - Busy models (`active_request_count > 0`) are never unloaded. If the target still can't fit, `ResolveError` names the busy models.
-- Before unloading, the user is asked; `-y` / `TAI_YES=1` skips the prompt. The "unload all and retry" fallback asks again, separately.
+- Before unloading, the user is asked; `-y` / `TAI_YES=1` skips the prompt. The "unload all and retry" fallback asks again, separately, and also skips busy models. A running 3D job keeps TRELLIS busy, and unloading it would kill the job.
 - `LoadFailed.memory` detects the allocation failure from the strings `allocate memory` / `ALLOC` in `startup_error`.
 
 ## Default model choice (`resolve` with no `-m`)

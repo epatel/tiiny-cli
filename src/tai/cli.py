@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
@@ -24,6 +25,7 @@ from tai.config import ConfigError, data_dir, load_settings
 from tai.db import Store
 from tai.mesh import Mesh3D, MeshOptions
 from tai.models import Model, ResolveError, build_catalog, plan_swap, resolve
+from tai.options import AskOutput, ChatOptions, Question, SessionRef, bundle, chat_options
 
 out = Console()
 err = Console(stderr=True)
@@ -91,7 +93,7 @@ class App:
     def _retry_after_fragmentation(self, target: Model, failure: LoadFailed) -> None:
         """NPU memory fragments: a big model may not fit after small ones even when
         the percentages add up. The device's own advice is to unload all and retry."""
-        others = [m for m in self.catalog() if m.loaded and m.id != target.id]
+        others = [m for m in self.catalog() if m.idle and m.id != target.id]  # never busy ones
         if not others:
             raise failure
         err.print(f"[yellow]{failure}[/]\nNPU memory is fragmented. Unload all other models "
@@ -267,6 +269,17 @@ def config_unset(app: App, key):
 
 
 # ---------------------------------------------------------------- chat
+@dataclass(frozen=True)
+class ChatRequest:
+    model: Model
+    messages: list[dict]
+    extra: dict  # extra request fields, e.g. chat_template_kwargs
+
+
+def _chat_request(app: App, model: Model, messages: list[dict], think: bool | None) -> ChatRequest:
+    return ChatRequest(model, messages, _think_extra(app, model, think))
+
+
 def _think_extra(app: App, model: Model, think: bool | None) -> dict:
     if think is None:
         s = app.store.get_setting("think")
@@ -276,10 +289,9 @@ def _think_extra(app: App, model: Model, think: bool | None) -> dict:
     return {"chat_template_kwargs": {"enable_thinking": think}}
 
 
-def _stream_reply(app: App, model: Model, messages: list[dict], extra: dict,
-                  show_thinking: bool) -> str:
+def _stream_reply(app: App, req: ChatRequest, show_thinking: bool) -> str:
     text, in_think = [], False
-    for chunk in app.client.chat_stream(model.id, messages, **extra):
+    for chunk in app.client.chat_stream(req.model.id, req.messages, **req.extra):
         if not chunk.get("choices"):
             continue
         delta = chunk["choices"][0].get("delta") or {}
@@ -299,33 +311,41 @@ def _stream_reply(app: App, model: Model, messages: list[dict], extra: dict,
     return "".join(text)
 
 
+def _system(opts: ChatOptions) -> list[dict]:
+    return [{"role": "system", "content": opts.system}] if opts.system else []
+
+
 @cli.command()
 @click.argument("prompt", nargs=-1)
-@click.option("-m", "--model", help="Chat model (default: a loaded one, or your default).")
-@click.option("-s", "--system", help="System prompt.")
 @click.option("-f", "--file", "files", multiple=True, type=click.Path(exists=True, path_type=Path),
               help="Attach an image (vision models) or a text file (inlined). Repeatable.")
-@click.option("--think/--no-think", default=None, help="Toggle reasoning on models that support it.")
+@chat_options
 @click.option("--show-thinking", is_flag=True, help="Print reasoning to stderr.")
 @click.option("--json", "as_json", is_flag=True, help="Print the raw API response.")
+@bundle("question", Question, "prompt", "files")
+@bundle("output", AskOutput, "show_thinking", "as_json")
 @pass_app
-def ask(app: App, prompt, model, system, files, think, show_thinking, as_json):
+def ask(app: App, question: Question, opts: ChatOptions, output: AskOutput):
     """One-shot question. Reads stdin too: `git diff | tai ask "review this"`."""
-    text = " ".join(prompt)
-    if not sys.stdin.isatty():
-        piped = sys.stdin.read()
+    m = app.model_for("chat", opts.model)
+    images, text = _split_files(m, question.files, _read_prompt(question.prompt))
+    app.ensure_loaded(m)
+    req = _chat_request(app, m, _system(opts) + [user_message(text, images)], opts.think)
+    if output.as_json:
+        out.print_json(json.dumps(app.client.chat(m.id, req.messages, **req.extra)))
+    else:
+        _stream_reply(app, req, output.show_thinking)
+
+
+def _read_prompt(words: tuple[str, ...]) -> str:
+    """Prompt words, followed by piped stdin when there is any."""
+    text = " ".join(words)
+    piped = "" if sys.stdin.isatty() else sys.stdin.read()
+    if piped.strip():
         text = f"{text}\n\n{piped}" if text else piped
     if not text.strip():
         raise click.UsageError("Nothing to ask.")
-    m = app.model_for("chat", model)
-    images, text = _split_files(m, files, text)
-    app.ensure_loaded(m)
-    messages = ([{"role": "system", "content": system}] if system else []) + [user_message(text, images)]
-    extra = _think_extra(app, m, think)
-    if as_json:
-        out.print_json(json.dumps(app.client.chat(m.id, messages, **extra)))
-    else:
-        _stream_reply(app, m, messages, extra, show_thinking)
+    return text
 
 
 def _split_files(m: Model, files, text: str) -> tuple[list[Path], str]:
@@ -341,40 +361,37 @@ def _split_files(m: Model, files, text: str) -> tuple[list[Path], str]:
 
 
 @cli.command()
-@click.option("-m", "--model", help="Chat model.")
-@click.option("-s", "--system", help="System prompt.")
-@click.option("-r", "--resume", "resume", help="Resume a session by id or name.")
+@chat_options
+@click.option("-r", "--resume", help="Resume a session by id or name.")
 @click.option("-c", "--continue", "cont", is_flag=True, help="Resume the most recent session.")
 @click.option("-n", "--name", help="Name for a new session.")
-@click.option("--think/--no-think", default=None)
+@bundle("session", SessionRef, "resume", "cont", "name")
 @pass_app
-def chat(app: App, model, system, resume, cont, name, think):
+def chat(app: App, opts: ChatOptions, session: SessionRef):
     """Interactive multi-turn chat. Sessions are saved; resume with -c or -r."""
     try:
         import readline  # noqa: F401  (line editing + history for input())
     except ImportError:
         pass
-    if resume or cont:
-        state = _resume_session(app, resume, model, system)
-    else:
-        state = _new_session(app, model, system, name)
-    state.think = think
+    state = _resume_session(app, session.resume, opts) if session.resuming else _new_session(app, opts, session.name)
+    state.think = opts.think
     app.ensure_loaded(state.model)
     err.print(f"[bold]{state.model.name}[/] [dim]session {state.sid} — /help for commands, Ctrl-D to exit[/]")
 
     def reply(m: Model, convo: list[dict], think: bool | None) -> str:
-        return _stream_reply(app, m, convo, _think_extra(app, m, think), show_thinking=True)
+        return _stream_reply(app, _chat_request(app, m, convo, think), show_thinking=True)
 
     ChatSession(app, state, err, reply).run()
 
 
-def _new_session(app: App, model: str | None, system: str | None, name: str | None) -> SessionState:
-    m = app.model_for("chat", model)
-    return SessionState(app.store.create_session(m.id, name=name, system=system), m, system)
+def _new_session(app: App, opts: ChatOptions, name: str | None) -> SessionState:
+    m = app.model_for("chat", opts.model)
+    return SessionState(app.store.create_session(m.id, name=name, system=opts.system), m, opts.system)
 
 
-def _resume_session(app: App, ref: str | None, model: str | None, system: str | None) -> SessionState:
-    """Resume session ``ref`` (id or name), or the most recent one when ref is None."""
+def _resume_session(app: App, ref: str | None, opts: ChatOptions) -> SessionState:
+    """Resume session ``ref`` (id or name), or the most recent one when ref is None.
+    -m and -s, when given, override what the session had."""
     store = app.store
     row = store.find_session(ref) if ref else store.last_session()
     if not row:
@@ -382,8 +399,8 @@ def _resume_session(app: App, ref: str | None, model: str | None, system: str | 
     messages = [{"role": r["role"], "content": r["content"]} for r in store.messages(row["id"])]
     label = f" {row['name']}" if row["name"] else ""
     err.print(f"[dim]Resumed session {row['id']}{label} ({len(messages)} messages)[/]")
-    return SessionState(row["id"], app.model_for("chat", model or row["model"]),
-                        system or row["system"], messages=messages)
+    return SessionState(row["id"], app.model_for("chat", opts.model or row["model"]),
+                        opts.system or row["system"], messages=messages)
 
 
 @cli.group(invoke_without_command=True)

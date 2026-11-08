@@ -21,7 +21,8 @@ class FakeClient:
 
     def running(self):
         return {"instances": {"running": [
-            {"model_id": m["id"], "status": "running", "use_time": m.get("used", 0)}
+            {"model_id": m["id"], "status": "running", "use_time": m.get("used", 0),
+             "active_request_count": m.get("active", 0)}
             for m in self._models.values() if m["status"] == "running"]}}
 
     def npu(self):
@@ -88,6 +89,24 @@ def test_memory_failure_unloads_everything_and_retries():
     app = app_with(c)
     app.ensure_loaded(target(app, "big"))
     assert c.log == [("launch", "big"), ("stop", "small"), ("launch", "big")]
+
+
+def test_memory_retry_never_unloads_busy_models():
+    busy = {**m("trellis", 6, "running"), "active": 1}
+    c = FakeClient([busy, m("small", 1, "running"), m("big", 90)], launches=[[OOM], OK])
+    app = app_with(c)
+    app.ensure_loaded(target(app, "big"))
+    assert ("stop", "trellis") not in c.log
+    assert c.log == [("launch", "big"), ("stop", "small"), ("launch", "big")]
+
+
+def test_memory_failure_with_only_busy_models_raises():
+    busy = {**m("trellis", 6, "running"), "active": 1}
+    c = FakeClient([busy, m("big", 90)], launches=[[OOM]])
+    app = app_with(c)
+    with pytest.raises(LoadFailed):
+        app.ensure_loaded(target(app, "big"))
+    assert c.log == [("launch", "big")]
 
 
 def test_memory_failure_with_nothing_to_unload_raises():
