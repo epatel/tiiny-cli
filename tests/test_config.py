@@ -12,6 +12,7 @@ def env(tmp_path, monkeypatch):
     cfg = tmp_path / "tiiny.json"
     cfg.write_text(json.dumps({"deviceAddress": "10.0.0.2", "account": {"authKey": "from-cfg"}}))
     monkeypatch.setenv("TIINY_CONFIG", str(cfg))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))  # no real ~/.config/tai/.env
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -55,3 +56,12 @@ def test_client_mode_needs_a_key_and_a_scheme(env, monkeypatch):
     monkeypatch.setenv("TAI_API_KEY", "k")
     with pytest.raises(ConfigError, match="scheme"):
         load_settings(url="host/tai")
+
+
+def test_user_dotenv_applies_everywhere_and_the_folder_env_wins(env):
+    user = env / "home" / ".config" / "tai" / ".env"
+    user.parent.mkdir(parents=True)
+    user.write_text("TAI_URL=https://host/tai\nTAI_API_KEY=user-key\n")
+    assert (load_settings().device, load_settings().token) == ("https://host/tai", "user-key")
+    (env / ".env").write_text("TAI_API_KEY=folder-key\n")
+    assert load_settings().token == "folder-key"

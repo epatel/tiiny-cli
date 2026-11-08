@@ -23,7 +23,7 @@ make setup   # creates .venv and installs tai into it
 make link    # optional: symlink tai into ~/.local/bin (PREFIX=... to change)
 ```
 
-`tai` reads the device address and auth key from the official `tiiny` CLI's config (`~/.local/tiiny/config.json`), so run `tiiny connect <ip>` and `tiiny login` once. To override, set `TAI_DEVICE`, or set the token with `TIINY_API_KEY` or `TAI_TOKEN`. Put them in the environment or in a `.env` file in the current directory; real environment variables win.
+`tai` reads the device address and auth key from the official `tiiny` CLI's config (`~/.local/tiiny/config.json`), so run `tiiny connect <ip>` and `tiiny login` once. To override, set `TAI_DEVICE`, or set the token with `TIINY_API_KEY` or `TAI_TOKEN`. Put them in the environment, in a `.env` file in the current directory, or in `~/.config/tai/.env` (applies everywhere); the environment wins, then the folder's `.env`.
 
 ## Usage
 
@@ -69,7 +69,7 @@ One machine near the Tiiny runs the server; other machines use `tai` as usual th
 ```sh
 tai serve --new-key                          # once: make a key
 TAI_API_KEY=… tai serve --port 8798          # on the server (or TAI_SERVE_PORT; default 8765)
-TAI_URL=https://host/tai TAI_API_KEY=… tai chat    # anywhere else (or --url, or a .env file)
+TAI_URL=https://host/tai TAI_API_KEY=… tai chat    # anywhere else (or --url; put both in ~/.config/tai/.env)
 ```
 
 The server forwards the device API after checking the key, and never shares the device key. It listens on 127.0.0.1. Point nginx at it, e.g. `location /tai/ { proxy_pass http://127.0.0.1:8798; }`; the server ignores the `/tai` prefix by itself. Turn off buffering and raise timeouts for streaming and long jobs. See `cards/serve.md` for the snippet. Sessions and settings stay on each client.

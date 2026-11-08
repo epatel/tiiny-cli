@@ -1,13 +1,14 @@
 """Where the device is and how to authenticate.
 
-Two ways to reach it:
+Every TAI_*/TIINY_* setting comes from the environment, then ./.env, then
+~/.config/tai/.env (``Env``). Two ways to reach the device:
 
 * **Client mode** — ``--url`` or TAI_URL points at a ``tai serve`` (e.g.
   ``https://host/tai/``), authenticated with TAI_API_KEY. Device settings are
   then not needed.
-* **Direct** (also what ``tai serve`` uses) — precedence: environment > ./.env
-  (TAI_DEVICE; token from TAI_TOKEN, then TIINY_API_KEY) > the official tiiny
-  CLI config (~/.local/tiiny/config.json, or TIINY_CONFIG). The tiiny config's
+* **Direct** (also what ``tai serve`` uses) — TAI_DEVICE; token from TAI_TOKEN,
+  then TIINY_API_KEY; else the official tiiny CLI config
+  (~/.local/tiiny/config.json, or TIINY_CONFIG). The tiiny config's
   ``account.authKey`` doubles as the Bearer token for the device's HTTP API.
 """
 
@@ -66,11 +67,17 @@ def read_dotenv(path: Path) -> dict[str, str]:
     return env
 
 
+def user_dotenv() -> Path:
+    """User-wide settings, read after the current folder's .env."""
+    return Path.home() / ".config" / "tai" / ".env"
+
+
 class Env:
-    """Settings from the real environment, then ./.env; empty values count as unset."""
+    """Settings from the real environment, then ./.env, then ~/.config/tai/.env;
+    empty values count as unset."""
 
     def __init__(self) -> None:
-        self.dotenv = read_dotenv(Path.cwd() / ".env")
+        self.dotenv = {**read_dotenv(user_dotenv()), **read_dotenv(Path.cwd() / ".env")}
 
     def first(self, *names: str) -> str | None:
         """The first of ``names`` that is set."""

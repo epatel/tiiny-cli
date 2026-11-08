@@ -1,6 +1,6 @@
 # serve
 
-`tai serve` (`src/tai/serve.py`) lets other machines use the device through this one. A **client** is any `tai` with `--url` or `TAI_URL` set: `load_settings` then returns `Settings(via_server=True)` with the server URL as base and `TAI_API_KEY` as the Bearer token, so `TiinyClient` and every command (agent, loader, `/tiiny`, 3D…) work unchanged. **Standalone** (no URL) is the default and is also what the server itself uses (`load_settings(direct=True)` ignores TAI_URL).
+`tai serve` (`src/tai/serve.py`) lets other machines use the device through this one. A **client** is any `tai` with `--url` or `TAI_URL` set (environment, `./.env`, or `~/.config/tai/.env` for every folder): `load_settings` then returns `Settings(via_server=True)` with the server URL as base and `TAI_API_KEY` as the Bearer token, so `TiinyClient` and every command (agent, loader, `/tiiny`, 3D…) work unchanged. **Standalone** (no URL) is the default and is also what the server itself uses (`load_settings(direct=True)` ignores TAI_URL).
 
 ```mermaid
 graph LR
