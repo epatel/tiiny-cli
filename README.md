@@ -1,0 +1,60 @@
+# tai
+
+Use every model on your [Tiiny](https://www.tiiny.ai/) from the terminal, over Wi-Fi.
+
+```
+$ tai models
+    Name                  Task   Type                NPU  Model ID
+ ○  TRELLIS.2-4B          3d     Image-to-3D         6%   microsoft/TRELLIS.2-4B
+ ○  Qwen3-ASR-1.7B        asr    ASR                 7%   Qwen/Qwen3-ASR-1.7B
+ ●  Qwen3-Coder-Next      chat   Text Generation     94%  Qwen/Qwen3-Coder-Next
+ ○  Qwen3.6-35B-A3B       chat   Image-Text-to-Text  47%  Qwen/Qwen3.6-35B-A3B
+ ...
+```
+
+The device only runs *loaded* models, and they share an NPU budget. `tai` loads whatever a command needs. When it doesn't fit, it shows which models it would unload (least recently used first) and asks. Pass `-y` to skip the prompt.
+
+## Install
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -e .
+ln -s "$PWD/.venv/bin/tai" ~/.local/bin/tai   # optional: put it on PATH
+```
+
+`tai` reads the device address and auth key from the official `tiiny` CLI's config (`~/.local/tiiny/config.json`), so run `tiiny connect <ip>` and `tiiny login` once. To override, set `TAI_DEVICE` / `TAI_TOKEN`.
+
+## Usage
+
+```sh
+tai ask "explain RAII in two sentences"
+git diff | tai ask -m coder "review this diff"
+tai ask -f photo.jpg "what's in this picture?"   # vision model (Qwen3.6)
+tai ask --think --show-thinking "hard puzzle…"   # toggle reasoning
+
+tai chat                    # interactive; /help inside for commands
+tai chat -c                 # continue the last session
+tai history                 # list sessions; `tai history show 3`, `tai history rm 3`
+
+tai image "a fox in the snow, watercolor" -o fox.png --size 1024x1024 --open
+tai tts "Hello there" -i "female, british accent" --play
+tai asr recording.wav
+tai embed "first text" "second text"           # JSON lines
+tai 3d toy.png --faces 200000 -o toy.glb       # ~15 min, image → textured mesh
+
+tai status                  # NPU usage
+tai load qwen3.6            # pre-load; tai unload --all
+tai config set default.chat coder              # preferred model per task
+tai config set think off                       # default reasoning mode
+```
+
+Models can be named by full id, display name, or any unique part of either (`coder`, `z-image`, `omni`).
+
+## Development
+
+```sh
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/pytest -q
+```
+
+See `CLAUDE.md` and `cards/` for how the device API works and how swapping is decided.

@@ -1,0 +1,13 @@
+{
+  "source": "https://ai.memention.net/setup",
+  "version": "2026-11-08",
+  "updated": "2026-11-08",
+  "applied": ["known-stack", "context-cards", "standing-defaults", "project-plan", "hooks-over-prose"],
+  "declined": [],
+  "copied": {
+    "cards/standing-defaults.md": {
+      "pattern": "standing-defaults",
+      "sha256": "c881fcdbb289e30e50344d85b93688923e2c230378c5425af2bbfe62459494f4"
+    }
+  }
+}
