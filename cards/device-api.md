@@ -5,7 +5,7 @@ The Tiiny device's HTTP API as `tai` uses it: endpoints, payloads and their quir
 ## Access
 
 - Everything goes through an nginx gateway on **port 80** of the device (`deviceAddress` in `~/.local/tiiny/config.json`).
-- Auth: `Authorization: Bearer <token>` (or `x-api-key`). The token is `account.authKey` from that same config, written by `tiiny login`. `src/tai/config.py` reads it; `TAI_DEVICE` / `TAI_TOKEN` override.
+- Auth: `Authorization: Bearer <token>` (or `x-api-key`). The token is `account.authKey` from that same config, written by `tiiny login`. `src/tai/config.py` reads it. Overrides, highest first: real env, then `./.env` (`TAI_DEVICE`; token from `TAI_TOKEN`, then `TIINY_API_KEY`). Empty values count as unset.
 - `GET /` needs no auth and returns the server version. `GET /openapi.json` covers only the system/account routes, not models or inference.
 - Errors come in several shapes: `{"error": {"message": …}}` (OpenAI style), `{"error": "…", "error_code": …}` (model containers), and `{"detail": …}` (FastAPI). `client._err` flattens all of them.
 

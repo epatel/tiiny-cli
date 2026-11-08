@@ -22,7 +22,7 @@ python3 -m venv .venv
 ln -s "$PWD/.venv/bin/tai" ~/.local/bin/tai   # optional: put it on PATH
 ```
 
-`tai` reads the device address and auth key from the official `tiiny` CLI's config (`~/.local/tiiny/config.json`), so run `tiiny connect <ip>` and `tiiny login` once. To override, set `TAI_DEVICE` / `TAI_TOKEN`.
+`tai` reads the device address and auth key from the official `tiiny` CLI's config (`~/.local/tiiny/config.json`), so run `tiiny connect <ip>` and `tiiny login` once. To override, set `TAI_DEVICE`, or set the token with `TIINY_API_KEY` or `TAI_TOKEN`. Put them in the environment or in a `.env` file in the current directory; real environment variables win.
 
 ## Usage
 
