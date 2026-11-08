@@ -25,6 +25,7 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
   - [x] Multi-line prompt (`PromptArea`): Enter sends; Ctrl+J / Alt+Enter / `\`+Enter add a newline; pastes keep newlines
   - [x] MCP servers (Claude Code `.mcp.json` format + `~/.config/tai/mcp.json`; ask unless readOnlyHint) and skills (`.claude/skills`, `~/.claude/skills`, `~/.config/tai/skills`), plus `tai mcp` / `tai skills`
   - Later: context compaction for long sessions, /model inside the TUI, MCP over HTTP verified against a real server, MCP OAuth
+- [ ] M7 — Robustness from the community API notes (cards/tiiny-api-notes.md): detect the post-restart 502 lock and suggest `tiiny login` (also after `/tiiny restart`); retry once on `xh2a backend fail` right after a load; tell users their chats are captured in the device vault, and maybe add a `/tiiny forget-day`
 - [ ] M5 — Polish: `tai serve` (OpenAI-compatible local proxy that auto-loads models)? shell completion? OCR/rerank if models get installed
 
 ## Decisions
