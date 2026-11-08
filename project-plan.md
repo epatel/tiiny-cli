@@ -19,6 +19,7 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
   - [x] sessions persisted (migration 3: session kind/cwd, full message JSON)
   - [x] textual TUI (log, input, permission modal, interrupt) + pilot tests
   - [ ] live run on the device, by the user (scripted auto-approval is blocked by the harness)
+  - [x] Browser viewer (aiohttp + WebSocket, token + origin check) with built-in `image`, `show` and `ask` tools; checked live in Chrome
   - [x] Agent model swapped out by a tool (e.g. `tai image` via bash) is reloaded automatically after asking; status line shows activity + elapsed time
   - [x] `/tiiny` in the TUI: status, models, load/unload, restart/shutdown (loader split into `loader.py` with a CLI and a TUI `LoaderUI`)
   - [x] Multi-line prompt (`PromptArea`): Enter sends; Ctrl+J / Alt+Enter / `\`+Enter add a newline; pastes keep newlines
@@ -33,12 +34,13 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
 - 2026-11-08 — Victims are the idle set freeing the least NPU (ties: fewer models, then least recently used), replacing pure LRU, which once unloaded the 94% coder to free 1%. User choice.
 - 2026-11-08 — TTS uses `/v1/synthesize`, not `/v1/audio/speech` (the latter fails upstream for OmniVoice).
 - 2026-11-08 — `tai agent` (user choices): asks before write/edit (shows diff) and bash (shows command), with y/n/always; tools = read, write, edit, bash + grep, glob, ls; full-screen TUI with textual. Tool calling verified on Qwen3-Coder-Next via standard OpenAI `tools` (streamed deltas work).
+- 2026-11-08 — Image tool + viewer (user choices): built-in tools, not MCP; the viewer shows items and asks questions; the image tool asks only when it must unload models; aiohttp is a new runtime dependency.
 - 2026-11-08 — MCP + skills (user choices): MCP config in Claude Code's format from the project's `.mcp.json` + `~/.config/tai/mcp.json` (not `~/.claude.json`); MCP tools ask unless marked readOnlyHint, and "always" is per server. Skills are shared with Claude Code (`.claude/skills`, `~/.claude/skills`) + `~/.config/tai/skills`, using progressive disclosure through a `skill` tool.
 - 2026-11-08 — Agent core (`src/tai/agent/loop.py`) is UI-independent: it yields events and asks a permission callback, so it is tested without the TUI or a device. The TUI runs it in a worker thread.
 - 2026-11-08 — Chat history is persisted text-only. Images attached in a past turn are not re-sent on resume.
 
 ## Current state / handoff
-All seven installed models were exercised live through `tai`: chat (Qwen3-Coder-Next, Qwen3.6 incl. vision and thinking toggle), Z-Image-Turbo, OmniVoice (incl. `instruct`), Qwen3-ASR, Qwen3-Embedding and TRELLIS 3D (shape→texture→export, and `tai 3d --faces 200000` → 16 MB GLB in ~7 min). 132 unit tests pass (no device needed; the MCP tests start a real stdio test server). `tai agent` is built and fully tested headlessly, but has not had a live run yet: it needs the user at the keyboard. After testing, the device state was left as is (the user said not to reload the coder model).
+All seven installed models were exercised live through `tai`: chat (Qwen3-Coder-Next, Qwen3.6 incl. vision and thinking toggle), Z-Image-Turbo, OmniVoice (incl. `instruct`), Qwen3-ASR, Qwen3-Embedding and TRELLIS 3D (shape→texture→export, and `tai 3d --faces 200000` → 16 MB GLB in ~7 min). 147 unit tests pass (no device needed; the MCP tests start a real stdio test server). `tai agent` is built and fully tested headlessly, but has not had a live run yet: it needs the user at the keyboard. After testing, the device state was left as is (the user said not to reload the coder model).
 
 ## Open questions
 - Do the TRELLIS controls (`seed`, `inference_quality`) belong in `params` at submit time? `tai 3d --quality/--seed` sends them there; this is untested.

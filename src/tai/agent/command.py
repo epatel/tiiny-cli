@@ -8,6 +8,7 @@ full-screen UI takes over.
 
 from __future__ import annotations
 
+import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,7 +18,9 @@ from tai.agent import mcp_client, skills
 from tai.agent.loop import Agent, AgentConfig, Decision, Transcript
 from tai.agent.prompt import system_prompt
 from tai.agent.tools import TOOLS, Tool, ToolContext
-from tai.agent.tui import AgentApp, AppInfo
+from tai.agent.media import MediaContext, media_tools
+from tai.agent.tui import AgentApp, AppInfo, TuiLoaderUI
+from tai.agent.viewer import Viewer
 from tai.config import data_dir
 from tai.models import Model
 from tai.options import AgentRequest, SessionRef
@@ -28,6 +31,7 @@ class AgentSession:
     sid: int
     model: Model
     messages: list[dict]
+    root: Path
 
 
 @dataclass
@@ -54,13 +58,13 @@ def open_session(app, session: SessionRef, model: str | None, root: Path) -> Age
     store = app.store
     if not session.resuming:
         m = app.agent_model(model)
-        return AgentSession(store.create_agent_session(m.id, str(root)), m, [])
+        return AgentSession(store.create_agent_session(m.id, str(root)), m, [], root)
     row = store.find_session(session.resume) if session.resume else store.last_session("agent", str(root))
     if not row:
         raise click.UsageError("No agent session to resume" + ("" if session.resume else " in this folder."))
     if row["kind"] != "agent":
         raise click.UsageError(f"Session {row['id']} is a {row['kind']} session; use `tai {row['kind']} -r`.")
-    return AgentSession(row["id"], app.agent_model(model or row["model"]), store.raw_messages(row["id"]))
+    return AgentSession(row["id"], app.agent_model(model or row["model"]), store.raw_messages(row["id"]), root)
 
 
 def load_extensions(root: Path, use_mcp: bool = True) -> Extensions:
@@ -89,9 +93,9 @@ def _connect_mcp(root: Path) -> mcp_client.McpHub | None:
     return hub
 
 
-def _title(s: AgentSession, root: Path, ext: Extensions) -> str:
+def _title(s: AgentSession, ext: Extensions) -> str:
     home = Path.home()
-    where = f"~/{root.relative_to(home)}" if home in root.parents else str(root)
+    where = f"~/{s.root.relative_to(home)}" if home in s.root.parents else str(s.root)
     resumed = f" · resumed ({len(s.messages)} messages)" if s.messages else ""
     extras = [f"{len(ext.skills)} skills"] if ext.skills else []
     extras += [f"{len(ext.hub.connected())} MCP"] if ext.hub and ext.hub.connected() else []
@@ -100,19 +104,37 @@ def _title(s: AgentSession, root: Path, ext: Extensions) -> str:
 
 
 def run_agent(app, req: AgentRequest) -> None:
-    from tai.cli import _think_extra  # shared with ask/chat
-
     root = Path.cwd().resolve()
     s = open_session(app, req.session, req.model, root)
     app.ensure_loaded(s.model)
     ext = load_extensions(root, use_mcp=not req.no_mcp)
+    viewer = Viewer()  # starts on first use (show / ask / image / `/view`)
     try:
-        config = AgentConfig(s.model.id, system_prompt(root, s.model.name, ext.prompt), ToolContext(root),
-                             extra=_think_extra(app, s.model, None), tools=ext.tools)
-        transcript = Transcript(s.messages, on_message=lambda msg: app.store.add_raw_message(s.sid, msg))
-        agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver
-        info = AppInfo(_title(s, root, ext), initial=req.text, on_clear=lambda: app.store.clear_messages(s.sid),
-                       skills=[(k.name, k.description) for k in ext.skills], servers=ext.server_lines())
-        AgentApp(agent, info).run()
+        media = MediaContext(app.client, viewer, agent_model=s.model.id)
+        ext.tools.update(media_tools(media))
+        ui = _build_app(app, s, ext, req)
+        ui.agent.on_cancel.append(viewer.cancel_asks)
+        ui.info.open_viewer = lambda: _open_viewer(viewer)
+        media.ui = TuiLoaderUI(ui)
+        ui.run()
     finally:
+        viewer.close()
         ext.close()
+
+
+def _build_app(app, s: AgentSession, ext: Extensions, req: AgentRequest) -> AgentApp:
+    from tai.cli import _think_extra  # shared with ask/chat
+
+    config = AgentConfig(s.model.id, system_prompt(s.root, s.model.name, ext.prompt), ToolContext(s.root),
+                         extra=_think_extra(app, s.model, None), tools=ext.tools)
+    transcript = Transcript(s.messages, on_message=lambda msg: app.store.add_raw_message(s.sid, msg))
+    agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver
+    info = AppInfo(_title(s, ext), initial=req.text, on_clear=lambda: app.store.clear_messages(s.sid),
+                   skills=[(k.name, k.description) for k in ext.skills], servers=ext.server_lines())
+    return AgentApp(agent, info)
+
+
+def _open_viewer(viewer: Viewer) -> str:
+    url = viewer.start()
+    webbrowser.open(url)
+    return url

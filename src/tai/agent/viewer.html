@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tai viewer</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e3e1db;
+    --accent: #2f6fdf; --accent-ink: #ffffff; --ok: #2e8b57; --warn: #c27c0e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141413; --card: #1e1e1c; --ink: #ecebe6; --muted: #9a998f; --line: #2e2e2b;
+            --accent: #6c9cf0; --accent-ink: #0d0d0c; --ok: #5fbf88; --warn: #e0a545; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px;
+           padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .status { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+  .live .dot { background: var(--ok); }
+  main { max-width: 920px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .empty { color: var(--muted); text-align: center; padding: 48px 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card .title { font-size: 13px; color: var(--muted); margin-bottom: 8px; overflow-wrap: anywhere; }
+  .card img, .card video { display: block; max-width: 100%; max-height: 70vh; border-radius: 6px; margin: 0 auto; }
+  .card audio { width: 100%; }
+  .card model-viewer { width: 100%; height: 420px; background: var(--bg); border-radius: 6px; }
+  .card iframe { width: 100%; border: 0; min-height: 40px; height: 120px; display: block; background: #fff; border-radius: 6px; }
+  .card pre { white-space: pre-wrap; margin: 0; font: 13px/1.45 ui-monospace, Menlo, monospace; }
+  .card a.file { color: var(--accent); display: inline-block; margin-top: 6px; }
+  .card .note { color: var(--muted); font-size: 13px; }
+  .ask { border-color: var(--accent); }
+  .ask .q { font-size: 16px; margin-bottom: 10px; white-space: pre-wrap; }
+  .ask .choices { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ask button { font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--accent);
+                background: transparent; color: var(--accent); cursor: pointer; }
+  .ask button:hover, .ask button.primary { background: var(--accent); color: var(--accent-ink); }
+  .ask form { display: flex; gap: 8px; }
+  .ask textarea { flex: 1; font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+                  background: var(--bg); color: var(--ink); resize: vertical; min-height: 40px; }
+  .ask .answer { color: var(--ok); font-weight: 600; }
+  .ask.answered button, .ask.answered textarea { opacity: .5; pointer-events: none; }
+</style>
+<script type="module" src="https://unpkg.com/@google/model-viewer@3.4.0/dist/model-viewer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+</head>
+<body>
+<header><h1>tai viewer</h1><div class="status" id="status"><span class="dot"></span><span id="status-text">connecting…</span></div></header>
+<main id="feed"><div class="empty" id="empty">Things the agent shows you appear here.</div></main>
+<script>
+const feed = document.getElementById("feed");
+const statusEl = document.getElementById("status");
+const statusText = document.getElementById("status-text");
+const cards = new Map();
+let socket;
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children.filter(Boolean));
+  return node;
+}
+
+// Agent HTML/Markdown runs in a sandboxed iframe (scripts allowed, no same-origin):
+// it cannot touch this page or its WebSocket. It reports its height via postMessage.
+function sandboxed(html, id) {
+  // Measure the body's content (documentElement.scrollHeight never drops below the frame's height).
+  const sizer = `<script>const r=()=>parent.postMessage({tai:"${id}",h:Math.ceil(document.body.getBoundingClientRect().bottom)+8},"*");new ResizeObserver(r).observe(document.body);addEventListener("load",r)<\/script>`;
+  const style = "<style>body{font:15px/1.5 system-ui,sans-serif;margin:8px;color:#1d1d1b}img{max-width:100%}" +
+    "table{border-collapse:collapse}th,td{border:1px solid #d9d7d0;padding:4px 10px;text-align:left}" +
+    "pre,code{background:#f1f0ec;border-radius:4px}pre{padding:8px;overflow:auto}</style>";
+  const frame = el("iframe", {sandbox: "allow-scripts", srcdoc: style + html + sizer});
+  frame.dataset.id = id;  // dataset is read-only, so it can't go through el()'s Object.assign
+  return frame;
+}
+window.addEventListener("message", (e) => {
+  if (!e.data || !e.data.tai) return;
+  const frame = document.querySelector(`iframe[data-id="${e.data.tai}"]`);
+  if (frame && e.source === frame.contentWindow) frame.style.height = Math.min(Math.max(e.data.h, 40), 2000) + "px";
+});
+
+function download(item) {
+  return el("a", {className: "file", href: item.url, download: item.name, textContent: "Download " + item.name});
+}
+
+function hasWebGL() {
+  try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); }
+  catch { return false; }
+}
+
+// One item that fails to render must never hide the others.
+function safeRender(item) {
+  try { return render(item); }
+  catch (err) {
+    console.error("tai viewer: could not render", item, err);
+    const parts = [el("div", {className: "note", textContent: `Could not show this ${item.kind} here (${err.message}).`})];
+    if (item.url) parts.push(download(item));
+    return parts;
+  }
+}
+
+function render(item) {
+  const title = item.title || item.name || "";
+  switch (item.kind) {
+    case "image": return [el("img", {src: item.url, alt: title})];
+    case "audio": return [el("audio", {src: item.url, controls: true})];
+    case "video": return [el("video", {src: item.url, controls: true})];
+    case "model3d": {
+      const link = download(item);
+      if (!hasWebGL()) return [el("div", {className: "note", textContent: "3D preview needs WebGL, which this browser has turned off."}), link];
+      const mv = document.createElement("model-viewer");
+      Object.entries({src: item.url, "camera-controls": "", "auto-rotate": "", "shadow-intensity": "1"})
+        .forEach(([k, v]) => mv.setAttribute(k, v));
+      return [mv, link];
+    }
+    case "html": return [sandboxed(item.content ?? "", item.id)];
+    case "markdown": {
+      if (window.marked) return [sandboxed(marked.parse(item.content ?? ""), item.id)];
+      return [el("pre", {textContent: item.content ?? ""})];
+    }
+    case "text": return [el("pre", {textContent: item.content ?? ""})];
+    case "file": return [download(item)];
+    default: return [el("pre", {textContent: JSON.stringify(item)})];
+  }
+}
+
+function answer(id, value) {
+  if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type: "answer", id, value}));
+}
+
+function askCard(item) {
+  const card = el("section", {className: "card ask"}, el("div", {className: "q", textContent: item.title}));
+  if (item.choices.length) {
+    card.append(el("div", {className: "choices"},
+      ...item.choices.map((c) => el("button", {textContent: c, onclick: () => answer(item.id, c)}))));
+  } else {
+    const box = el("textarea", {placeholder: "Your answer… (Ctrl/⌘+Enter to send)"});
+    box.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) form.requestSubmit(); });
+    const form = el("form", {onsubmit: (e) => { e.preventDefault(); answer(item.id, box.value); }},
+      box, el("button", {className: "primary", textContent: "Send"}));
+    card.append(form);
+    setTimeout(() => box.focus(), 0);
+  }
+  if (item.answer != null) markAnswered(card, item.answer);
+  return card;
+}
+
+function markAnswered(card, value) {
+  if (card.classList.contains("answered")) return;
+  card.classList.add("answered");
+  card.append(el("div", {className: "answer", textContent: "→ " + value}));
+}
+
+function add(item) {
+  document.getElementById("empty")?.remove();
+  const card = item.kind === "ask" ? askCard(item)
+    : el("section", {className: "card"}, el("div", {className: "title", textContent: item.title || item.name || item.kind}), ...safeRender(item));
+  cards.set(item.id, card);
+  feed.append(card);
+  card.scrollIntoView({behavior: "smooth", block: "end"});
+}
+
+function connect() {
+  const url = location.href.replace(/^http/, "ws").replace(/\/?(\?.*)?$/, "/ws");
+  socket = new WebSocket(url);
+  socket.onopen = () => { statusEl.classList.add("live"); statusText.textContent = "connected"; };
+  socket.onclose = () => { statusEl.classList.remove("live"); statusText.textContent = "disconnected — retrying"; setTimeout(connect, 1500); };
+  socket.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "hello") { feed.querySelectorAll(".card").forEach((c) => c.remove()); cards.clear(); msg.items.forEach(add); }
+    if (msg.type === "item") add(msg.item);
+    if (msg.type === "answered") { const c = cards.get(msg.id); if (c) markAnswered(c, msg.answer); }
+  };
+}
+connect();
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ flowchart LR
   LOOP -- Transcript.on_message --> DB[(sqlite: session kind=agent,<br/>message.data JSON)]
 ```
 
-- **command.py** does everything that may prompt or print in the normal terminal (model choice, `ensure_loaded` with its unload confirmation, MCP connection status) *before* the TUI starts, and closes the MCP hub after it exits. `AgentConfig.tools` = built-ins + `skill` + MCP tools. textual is imported lazily, so other `tai` commands don't pay for it.
+- **command.py** creates the `Viewer` and the media tools (closing the viewer on exit). It does everything that may prompt or print in the normal terminal (model choice, `ensure_loaded` with its unload confirmation, MCP connection status) *before* the TUI starts, and closes the MCP hub after it exits. `AgentConfig.tools` = built-ins + `skill` + MCP tools. textual is imported lazily, so other `tai` commands don't pay for it.
 - **loop.py** knows nothing about the UI. `Agent.run(text)` streams one turn: it rebuilds tool calls from streamed deltas (`_Accumulator`: id/name arrive first, `arguments` arrive in pieces by `index`), runs each call, appends a `tool` message per call, and repeats until a reply has no tool calls (or `max_steps` = 50 is reached). It yields `TextDelta` / `ReasoningDelta` / `ToolStart` / `ToolEnd` / `TurnEnd`.
 - **Prompt** is `PromptArea` (a `TextArea` subclass). Enter sends. Ctrl+J, Alt+Enter, or a `\` before the cursor + Enter inserts a newline; Shift+Enter works only in terminals that report it (most send a plain Enter). Pasted text keeps its newlines and isn't sent: a real paste reaches the App, which forwards it once to the focused widget, so tests must `app.post_message(events.Paste(...))`. Posting to the widget directly double-inserts. The box grows to `max-height: 12`.
 - **tui.py** runs `Agent.run` in a `@work(thread=True)` worker and receives events via `post_message`. `approve()` is called on the worker thread: it pushes `PermissionScreen` through `call_from_thread` and blocks on a `threading.Event` until the modal is dismissed.
@@ -47,6 +47,16 @@ flowchart LR
 - Progressive disclosure: the system prompt lists only names and descriptions (up to 400 characters each). The `skill` tool (enum of names, never asks) returns the body without its frontmatter, plus the skill's folder, so the model can `read` the files it references.
 - The frontmatter parser is a small built-in one (no PyYAML): `key: value`, quotes, `>`/`|` blocks and indented continuation lines.
 - In the TUI, `/skills` lists them and `/<name> [task]` sends "Use the `<name>` skill. [task]". `tai skills` lists them from the shell.
+
+## Viewer and media tools (`agent/viewer.py`, `viewer.html`, `agent/media.py`)
+
+- These are built-in tools, deliberately not MCP: the viewer shares session state with the agent, and `image` needs the in-process `ModelLoader` and the agent's auto-reload. An MCP wrapper could be added later for other agents.
+- **`image`** (prompt, path?, size?, model?) loads the image model via `ModelLoader(protect=agent model)` with the TUI's `TuiLoaderUI`, so it asks only when something must be unloaded (e.g. the coder at 94%; nothing with Qwen3.6 at 47%). It saves `images/<slug>.png` inside the project, **never overwrites** (`free_path` adds `-2`…), so it needs no write permission, then shows the image. Without a UI it refuses.
+- **`show`** (path | html | markdown | text, title?) presents an item; `kind_for` maps the suffix to image/audio/video/model3d/html/markdown/file. **`ask`** (question, choices?) blocks until answered in the browser (600 s timeout); Esc releases it (`Agent.on_cancel` → `Viewer.cancel_asks`). None of the three needs permission.
+- **Server**: aiohttp on its own loop thread, `127.0.0.1` on a random port, URL `http://127.0.0.1:<port>/<token>/`. Routes are `/<token>/`, `/<token>/ws`, and `/<token>/file/<id>/<name>`, which serves only presented items. The WebSocket requires `Origin` == the viewer's own origin, which blocks other sites and sandboxed iframes (Origin `null`). The browser opens on the first item unless a viewer is already connected; `/view` opens it on demand. Protocol: server sends `hello{items}` / `item` / `answered`; client sends `answer{id,value}`.
+- **Page**: the agent's HTML and Markdown (rendered by `marked` from jsDelivr) go into `<iframe sandbox="allow-scripts">` srcdoc. Each frame posts its body height back. 3D uses `<model-viewer>` from unpkg and only when WebGL is available, with a download link always shown. Every card renders through `safeRender`.
+- Bugs found in a real browser (keep them fixed): one throwing renderer (model-viewer without WebGL) aborted the `hello` replay and hid every later card; `Object.assign(el, {dataset: …})` throws (`dataset` is read-only); `documentElement.scrollHeight` never shrinks below the frame height, so measure `body`.
+- Tests: `tests/test_agent_viewer.py` runs the real server with an aiohttp client as the browser (token, origin, live push, replay, file serving, ask/cancel/timeout). `tests/test_agent_media.py` uses a fake device and viewer. The page itself was checked by hand in Chrome.
 
 ## When the agent's model gets swapped out
 

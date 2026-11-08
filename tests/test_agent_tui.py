@@ -395,3 +395,14 @@ def test_status_shows_activity_with_elapsed_time(tmp_path):
             app._status("ready")
             assert app._activity is None
     run(main())
+
+
+def test_view_command_opens_the_viewer(tmp_path):
+    async def main():
+        app = make_app(tmp_path)
+        app.info.open_viewer = lambda: "http://127.0.0.1:9/tok/"
+        async with app.run_test(size=(100, 30)) as pilot:
+            await send(pilot, "/view")
+            await pilot.pause()
+            assert "Viewer: http://127.0.0.1:9/tok/" in texts(app)
+    run(main())

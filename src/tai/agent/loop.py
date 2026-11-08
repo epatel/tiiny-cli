@@ -139,6 +139,7 @@ class Agent:
         # Called when the model is no longer loaded (e.g. a tool ran `tai image`, which swapped
         # it out). Should load it again or raise TiinyError. None = just fail the turn.
         self.reload_model: Callable[[], None] | None = None
+        self.on_cancel: list[Callable[[], None]] = []  # e.g. release a question waiting in the viewer
 
     @property
     def messages(self) -> list[dict]:
@@ -147,6 +148,8 @@ class Agent:
     def cancel(self) -> None:
         """Stop the current turn at the next safe point (between chunks or tools)."""
         self._cancel.set()
+        for hook in self.on_cancel:
+            hook()
 
     def clear(self) -> None:
         self.messages.clear()

@@ -36,7 +36,7 @@ Enforced by hooks (`.claude/settings.json`): `pip install` outside `.venv/bin/` 
 
 ### Domains
 - [device-api](cards/device-api.md) — calling or debugging any device endpoint, adding a new model type/task, or an HTTP error from the device
-- [agent](cards/agent.md) — anything in `src/tai/agent/` (`tai agent`, `tai mcp`, `tai skills`): tools, the loop, permissions, the TUI, `/tiiny` device commands, agent sessions, MCP servers, skills
+- [agent](cards/agent.md) — anything in `src/tai/agent/` (`tai agent`, `tai mcp`, `tai skills`): tools, the loop, permissions, the TUI, `/tiiny` device commands, the browser viewer + image/show/ask tools, agent sessions, MCP servers, skills
 - [npu-swapping](cards/npu-swapping.md) — anything about loading/unloading models (`src/tai/loader.py`), NPU budget, "Cannot allocate memory", or which model is picked by default
 
 ### Decisions

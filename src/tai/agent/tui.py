@@ -36,7 +36,7 @@ from tai.models import ResolveError
 RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
 
 HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · Esc interrupt · Ctrl+C quit
-**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/clear` forget the conversation · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
+**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
 
 
@@ -55,6 +55,7 @@ class AppInfo:
     on_clear: Callable[[], None] = lambda: None
     skills: list[tuple[str, str]] = field(default_factory=list)  # (name, description)
     servers: list[str] = field(default_factory=list)  # one status line per MCP server
+    open_viewer: Callable[[], str] | None = None  # starts the browser viewer, opens it, returns its URL
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -283,7 +284,7 @@ class AgentApp(App):
     def _command(self, cmd: str, arg: str) -> None:
         actions = {"exit": self.action_quit, "quit": self.action_quit, "q": self.action_quit,
                    "clear": self.action_clear, "help": lambda: self._note(HELP),
-                   "skills": self._list_skills, "mcp": self._list_servers}
+                   "skills": self._list_skills, "mcp": self._list_servers, "view": self._view}
         if cmd in actions:
             actions[cmd]()
         elif cmd == "tiiny":
@@ -328,6 +329,12 @@ class AgentApp(App):
 
     def _note(self, markdown: str) -> None:
         self._add(Static(Markdown(markdown), classes="assistant"))
+
+    def _view(self) -> None:
+        if self.info.open_viewer is None:
+            self.notify("No viewer in this session.", severity="warning")
+            return
+        self._note(f"Viewer: {self.info.open_viewer()}  (images, audio, 3D and questions from the agent show up there)")
 
     def _list_skills(self) -> None:
         rows = [f"- **{name}** — {desc}" for name, desc in self.info.skills]

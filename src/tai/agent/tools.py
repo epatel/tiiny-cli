@@ -73,7 +73,8 @@ class Tool:
 
     def summary(self, args: dict) -> str:
         """Short one-line label for the UI, e.g. `edit src/x.py`."""
-        key = next((k for k in ("path", "command", "pattern", "name") if args.get(k)), None)
+        key = next((k for k in ("path", "command", "pattern", "name", "prompt", "question", "title")
+                    if args.get(k)), None)
         value = str(args[key]).splitlines()[0] if key else ""
         return f"{self.display or self.name} {value[:100]}".strip()
 
