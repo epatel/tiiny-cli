@@ -76,3 +76,11 @@ def test_task3d_submit_encodes_refs(client):
     from urllib.parse import parse_qs  # no file -> urlencoded form; the device accepts both
     form = parse_qs(route.calls[0].request.content.decode())
     assert form["stage"] == ["texture"] and json.loads(form["input_refs"][0]) == refs
+
+
+@respx.mock
+def test_launch_idle_stream_times_out_with_clear_error(client):
+    respx.post(f"{BASE}/api/v1/models/Qwen/X/launch/stream").mock(side_effect=httpx.ReadTimeout("idle"))
+    with pytest.raises(TiinyError, match="No progress from the device for 180s while loading Qwen/X"):
+        list(client.launch("Qwen/X"))
+    assert respx.calls[0].request.extensions["timeout"]["read"] == 180.0

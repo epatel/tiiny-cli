@@ -63,21 +63,43 @@ def test_no_swap_when_it_fits(cat):
     assert plan.unload == [] and plan.free_before == 27
 
 
-def test_swap_unloads_least_recently_used_first(cat):
-    plan = plan_swap(cat, resolve(cat, "coder"))  # needs 94, 27 free
-    # LRU order: embedding(50), z-image(100), omnivoice(200), qwen3.6(300)
-    assert [m.name for m in plan.unload] == [
-        "Qwen3-Embedding-0.6B", "Z-Image-Turbo", "OmniVoice", "Qwen3.6-35B-A3B"]
+def test_swap_unloads_the_least_npu_that_makes_room(cat):
+    plan = plan_swap(cat, resolve(cat, "coder"))  # needs 94, 27 free -> free 67 more
+    # Options: qwen3.6+z-image = 70, all four = 73. Keep the small ones loaded.
+    assert {m.name for m in plan.unload} == {"Qwen3.6-35B-A3B", "Z-Image-Turbo"}
 
 
-def test_swap_stops_as_soon_as_it_fits():
-    models = MODELS[:1] + [api("a/Big", "Text-to-Image", 80, "running"), api("a/Small", "ASR", 10, "running")]
+def loaded(*specs):
+    """specs: (name, npu, last_used); plus an unloaded 'Target' needing the given npu."""
+    models = [api(f"a/{n}", "ASR", npu, "running") for n, npu, _ in specs]
     running = {"instances": {"running": [
-        {"model_id": "a/Small", "status": "running", "use_time": 1},
-        {"model_id": "a/Big", "status": "running", "use_time": 2}]}}
-    cat = build_catalog(models, running)
-    plan = plan_swap(cat, resolve(cat, "coder"))  # 10 free; small frees 20, big frees 100
-    assert [m.name for m in plan.unload] == ["Small", "Big"]
+        {"model_id": f"a/{n}", "status": "running", "use_time": used} for n, _, used in specs]}}
+    return build_catalog(models, running)
+
+
+def target(npu):
+    return build_catalog([api("a/Target", "ASR", npu)])[0]
+
+
+def test_small_model_is_unloaded_instead_of_a_big_older_one():
+    # The real case: 5% free, TRELLIS needs 6. The coder (94) is older, but the embedding (1) suffices.
+    cat = loaded(("Coder", 94, 1), ("Embed", 1, 2))
+    assert [m.name for m in plan_swap(cat + [target(6)], target(6)).unload] == ["Embed"]
+
+
+def test_one_medium_model_beats_many_small_ones():
+    cat = loaded(("A", 10, 1), ("B", 10, 2), ("C", 10, 3), ("M", 25, 4))  # 45 free, need 70 -> free 25
+    assert [m.name for m in plan_swap(cat + [target(70)], target(70)).unload] == ["M"]
+
+
+def test_tie_prefers_fewer_models_then_least_recently_used():
+    cat = loaded(("Old", 20, 1), ("New", 20, 2), ("X", 10, 3), ("Y", 10, 4))  # 40 free, need 60
+    assert [m.name for m in plan_swap(cat + [target(60)], target(60)).unload] == ["Old"]
+
+
+def test_swap_takes_everything_when_needed():
+    cat = loaded(("Small", 10, 1), ("Big", 80, 2))  # 10 free, need 94
+    assert {m.name for m in plan_swap(cat + [target(94)], target(94)).unload} == {"Small", "Big"}
 
 
 def test_swap_never_unloads_busy_models(cat):
@@ -86,3 +108,10 @@ def test_swap_never_unloads_busy_models(cat):
             m.active = 1
     with pytest.raises(ResolveError, match="busy models: Qwen3.6-35B-A3B"):
         plan_swap(cat, resolve(cat, "coder"))
+
+
+def test_greedy_fallback_for_many_models(monkeypatch):
+    import tai.models
+    monkeypatch.setattr(tai.models, "MAX_EXACT", 1)
+    cat = loaded(("A", 30, 1), ("B", 5, 2), ("C", 10, 3))  # 55 free, need 70 -> smallest first: B, C
+    assert [m.name for m in plan_swap(cat + [target(70)], target(70)).unload] == ["B", "C"]

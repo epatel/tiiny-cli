@@ -23,8 +23,20 @@ import httpx
 from tai.config import Settings
 
 
+LAUNCH_IDLE_TIMEOUT = 180.0  # seconds without a progress event before a load counts as failed
+
+
 class TiinyError(RuntimeError):
     pass
+
+
+def _launch_event(event: str, data: str) -> dict:
+    try:
+        payload = json.loads(data)
+    except ValueError:
+        payload = {"message": data}
+    payload["_event"] = event
+    return payload
 
 
 def _err(r: httpx.Response) -> TiinyError:
@@ -97,14 +109,21 @@ class TiinyClient:
         return self._json("GET", "/api/v1/models/npu/status")
 
     def launch(self, model_id: str) -> Iterator[dict]:
-        """Load a model; yields progress dicts, the last one has event 'done'."""
-        for event, data in self._sse("POST", f"/api/v1/models/{model_id}/launch/stream"):
-            try:
-                payload = json.loads(data)
-            except ValueError:
-                payload = {"message": data}
-            payload["_event"] = event
-            yield payload
+        """Load a model; yields progress dicts, the last one has event 'done'.
+
+        The device sends progress every second or two. It can also silently drop a
+        launch (seen while a 3D job was busy) and leave the stream open, so a
+        stream with no event for LAUNCH_IDLE_TIMEOUT seconds is treated as failed."""
+        path = f"/api/v1/models/{model_id}/launch/stream"
+        timeout = httpx.Timeout(30.0, read=LAUNCH_IDLE_TIMEOUT)
+        try:
+            for event, data in self._sse("POST", path, timeout=timeout):
+                yield _launch_event(event, data)
+        except httpx.ReadTimeout as e:
+            raise TiinyError(
+                f"No progress from the device for {LAUNCH_IDLE_TIMEOUT:.0f}s while loading {model_id}; "
+                "it may have dropped the request. Check `tai status` and retry."
+            ) from e
 
     def stop(self, model_id: str) -> dict:
         return self._json("POST", f"/api/v1/models/{model_id}/stop")

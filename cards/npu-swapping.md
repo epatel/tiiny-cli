@@ -18,7 +18,7 @@ flowchart TD
   B -->|no| C[plan_swap: free = total - used]
   C --> D{fits?}
   D -->|yes| L[launch M]
-  D -->|no| E[unload LRU idle models until it fits<br/>skip active_request_count > 0]
+  D -->|no| E[unload the idle set that frees the least NPU<br/>skip active_request_count > 0]
   E --> F{confirm or --yes}
   F --> L
   L --> G{NPU alloc failure?}
@@ -27,7 +27,9 @@ flowchart TD
   H --> L2[launch M] --> Z
 ```
 
-- LRU order comes from `last_inference_time`, falling back to `use_time`, both from `/api/v1/models/running`.
+- Choosing victims (`_cheapest_victims`): among idle models, the combination that frees the **least total NPU** while still making room wins. Ties go to fewer models, then to the set whose newest member was used longest ago. Big models are expensive to reload (the coder takes about a minute), so they are kept over small ones regardless of recency. Example: 5% free and TRELLIS needs 6 → unload the embedding model (1), not the older coder (94).
+- Search is exhaustive over combinations, which is trivial for the 7 models on the device. Above `MAX_EXACT` (16) idle models it falls back to a greedy smallest-first pass.
+- Recency comes from `last_inference_time`, falling back to `use_time`, both from `/api/v1/models/running`.
 - Busy models (`active_request_count > 0`) are never unloaded. If the target still can't fit, `ResolveError` names the busy models.
 - Before unloading, the user is asked; `-y` / `TAI_YES=1` skips the prompt. The "unload all and retry" fallback asks again, separately, and also skips busy models. A running 3D job keeps TRELLIS busy, and unloading it would kill the job.
 - `LoadFailed.memory` detects the allocation failure from the strings `allocate memory` / `ALLOC` in `startup_error`.

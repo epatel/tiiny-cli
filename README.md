@@ -12,7 +12,7 @@ $ tai models
  ...
 ```
 
-The device only runs *loaded* models, and they share an NPU budget. `tai` loads whatever a command needs. When it doesn't fit, it shows which models it would unload (least recently used first) and asks. Pass `-y` to skip the prompt.
+The device only runs *loaded* models, and they share an NPU budget. `tai` loads whatever a command needs. When it doesn't fit, it picks the idle models that free the least NPU (so big models stay loaded), shows them, and asks. Pass `-y` to skip the prompt.
 
 ## Install
 

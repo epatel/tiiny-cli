@@ -2,13 +2,14 @@
 
 The device only serves *loaded* models, and loaded models share an NPU budget
 (npu_total, 100). Each model has a fixed ``npu_usage``. To use a model that
-doesn't fit we unload others — least-recently-used first, never one with
-active requests. See cards/npu-swapping.md.
+doesn't fit we unload the idle models that free the least NPU while still making
+room (ties: fewer models, then least recently used), never one with active requests. See cards/npu-swapping.md.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import combinations
 
 # Device "type" strings -> tai task names.
 TASK_BY_TYPE = {
@@ -140,22 +141,46 @@ def plan_swap(models: list[Model], target: Model, total: int = 100) -> SwapPlan:
         return SwapPlan(target, [], free)
     if target.npu > total:
         raise ResolveError(f"{target.name} needs {target.npu}% NPU, more than the device has.")
-    victims = _lru_victims(models, target, free)
+    victims = _cheapest_victims(models, target, free)
     if free + sum(m.npu for m in victims) < target.npu:
         raise ResolveError(_cannot_free_message(models, target))
     return SwapPlan(target, victims, free)
 
 
-def _lru_victims(models: list[Model], target: Model, free: int) -> list[Model]:
-    """Idle loaded models, least recently used first, until ``target`` would fit."""
-    idle = sorted((m for m in models if m.idle and m.id != target.id),
-                  key=lambda m: m.last_used)
+MAX_EXACT = 16  # idle models searched exhaustively; beyond that, greedy smallest-first
+
+
+def _cheapest_victims(models: list[Model], target: Model, free: int) -> list[Model]:
+    """Idle models whose unloading frees the least NPU while making ``target`` fit.
+
+    Keeping big, expensive-to-reload models loaded matters more than recency, so
+    cost is the NPU freed; ties prefer fewer models, then the least recently used.
+    """
+    need = target.npu - free
+    if need <= 0:
+        return []
+    idle = sorted((m for m in models if m.idle and m.id != target.id), key=lambda m: m.last_used)
+    return _greedy_victims(idle, need) if len(idle) > MAX_EXACT else _exact_victims(idle, need)
+
+
+def _exact_victims(idle: list[Model], need: int) -> list[Model]:
+    """Try every combination (the device holds a handful of models)."""
+    subsets = (c for size in range(1, len(idle) + 1) for c in combinations(idle, size))
+    feasible = (c for c in subsets if sum(m.npu for m in c) >= need)
+    return list(min(feasible, key=_swap_cost, default=()))
+
+
+def _swap_cost(combo: tuple[Model, ...]) -> tuple:
+    return sum(m.npu for m in combo), len(combo), max(m.last_used for m in combo)
+
+
+def _greedy_victims(idle: list[Model], need: int) -> list[Model]:
     victims: list[Model] = []
-    for m in idle:
-        if free >= target.npu:
+    for m in sorted(idle, key=lambda m: (m.npu, m.last_used)):
+        if need <= 0:
             break
         victims.append(m)
-        free += m.npu
+        need -= m.npu
     return victims
 
 
