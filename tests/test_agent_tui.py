@@ -3,8 +3,9 @@
 import asyncio
 import json
 
-from rich.markdown import Markdown
+
 from rich.text import Text
+from textual.widgets import Markdown as MarkdownView
 from textual.widgets import Static
 
 from tai.agent.loop import Agent, AgentConfig, Decision, Transcript
@@ -37,10 +38,11 @@ def make_app(root, *replies, messages=None, initial=None, on_clear=lambda: None)
 
 
 def texts(app):
-    out = []
+    out = [md.source for md in app.query(MarkdownView)]  # assistant messages and notes
     for w in app.query(Static):
-        c = w.content
-        out.append(c.plain if isinstance(c, Text) else c.markup if isinstance(c, Markdown) else str(c))
+        if not any(isinstance(a, MarkdownView) for a in w.ancestors):
+            c = w.content
+            out.append(c.plain if isinstance(c, Text) else str(c))
     return "\n".join(out)
 
 
@@ -252,6 +254,37 @@ def test_up_down_recall_earlier_prompts_and_save_new_ones(tmp_path):
             assert saved == ["/help"] and area.text == ""
             await pilot.press("up")
             assert area.text == "/help"
+    run(main())
+
+
+def test_ctrl_c_copies_a_selection_and_quits_without_one(tmp_path, monkeypatch):
+    from textual.selection import Selection
+
+    from tai.agent import tui
+    from tai.agent.tui import MessageView, PromptArea
+
+    monkeypatch.setattr(tui.sys, "platform", "test")  # no pbcopy in tests
+
+    async def main():
+        app = make_app(tmp_path, text_reply("Hello **there**"))
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.click("#prompt")
+            await type_text(pilot, "hi")
+            await pilot.press("enter")
+            await wait_until(pilot, lambda: not app.busy and "Hello" in texts(app))
+            area = app.query_one(PromptArea)
+            area.load_text("draft text")
+            area.select_all()
+            await pilot.press("ctrl+c")
+            assert app._clipboard == "draft text" and app.is_running
+            area.selection = area.selection.cursor(area.cursor_location)  # deselect
+            block = next(w for w in app.query_one(MessageView).query("*") if w.get_selection(Selection(None, None)))
+            app.screen.selections = {block: Selection(None, None)}  # as a mouse drag over the reply would
+            await pilot.press("ctrl+c")
+            assert app._clipboard == "Hello there" and app.is_running
+            await pilot.press("ctrl+c")  # nothing selected now: quit
+            await pilot.pause()
+            assert not app.is_running
     run(main())
 
 

@@ -2,19 +2,20 @@
 
 The agent loop runs in a worker thread and posts its events here as messages.
 Permission requests block that thread on a threading.Event until the modal
-answers. Esc interrupts the current turn; Ctrl+C quits.
+answers. Esc interrupts the current turn; Ctrl+C copies the selection, or quits.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 from textual import events, work
@@ -24,6 +25,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Collapsible, Footer, Static, TextArea
+from textual.widgets import Markdown as MarkdownView
 
 from tai.agent.loop import (Agent, Decision, Event, Notice, ReasoningDelta, TextDelta, ToolEnd,
                             ToolStart, TurnEnd)
@@ -36,7 +38,7 @@ from tai.models import ResolveError
 
 RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
 
-HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · ↑/↓ earlier prompts · Esc interrupt · Ctrl+C quit
+HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · ↑/↓ earlier prompts · drag to select, Ctrl+C copy · Esc interrupt · Ctrl+C (nothing selected) quit
 **Commands:** `/tiiny` manage the device (`/tiiny help`) · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
 
@@ -95,6 +97,30 @@ class TuiLoaderUI:
         def update(pct: float, msg: str) -> None:
             self.app.call_from_thread(self.app._busy, f"Loading {name}", f"{pct:.0f}% {msg[:40]}".strip())
         yield update
+
+
+class MessageView(MarkdownView):
+    """Assistant text as textual's Markdown widget (mouse-selectable, unlike a Rich
+    renderable). While streaming it is fed the whole source on every delta, possibly
+    before it is mounted: Markdown applies its constructor text on mount, which would
+    overwrite earlier updates, so the latest source is re-applied after mounting."""
+
+    def __init__(self, markdown: str = "", **kwargs) -> None:
+        super().__init__(markdown, **kwargs)
+        self._latest = markdown
+
+    def set_source(self, markdown: str) -> None:
+        self._latest = markdown
+        if self.is_mounted:
+            self.update(markdown)  # updates are serialised by the widget's lock; the last wins
+
+    def on_mount(self) -> None:
+        # Markdown's own mount handler (textual calls it too) applies the constructor text.
+        self.call_after_refresh(self._reapply)
+
+    def _reapply(self) -> None:
+        if self.source != self._latest:
+            self.update(self._latest)
 
 
 class PromptArea(TextArea):
@@ -207,7 +233,7 @@ class AgentApp(App):
     #perm-body { height: auto; max-height: 30; margin: 1 0; }
     """
     BINDINGS = [Binding("escape", "interrupt", "Interrupt"),
-                Binding("ctrl+c", "quit", "Quit", priority=True),
+                Binding("ctrl+c", "copy_or_quit", "Copy/Quit", priority=True),
                 Binding("ctrl+l", "clear", "Clear")]
 
     def __init__(self, agent: Agent, info: AppInfo) -> None:
@@ -215,7 +241,7 @@ class AgentApp(App):
         self.agent, self.info = agent, info
         agent.approve = self.approve
         self.busy = False
-        self._text: Static | None = None  # assistant message being streamed
+        self._text: MessageView | None = None  # assistant message being streamed
         self._text_buf = ""
         self._think: Static | None = None
         self._think_buf = ""
@@ -224,6 +250,26 @@ class AgentApp(App):
         self.device_busy = False  # a /tiiny command is running
         self._activity: Activity | None = None
         agent.reload_model = self._reload_agent_model
+
+    # -- clipboard -------------------------------------------------------
+    async def action_copy_or_quit(self) -> None:
+        """Ctrl+C copies the selection (mouse-selected text, or text selected in the
+        prompt) and quits when nothing is selected."""
+        focused = self.focused
+        text = focused.selected_text if isinstance(focused, TextArea) else ""
+        text = text or self.screen.get_selected_text() or ""
+        if not text:
+            await self.action_quit()
+            return
+        self.copy_to_clipboard(text)
+        self.screen.clear_selection()
+        self.notify(f"Copied {len(text)} characters")
+
+    def copy_to_clipboard(self, text: str) -> None:
+        """Textual copies with OSC 52, which macOS Terminal ignores: use pbcopy there too."""
+        super().copy_to_clipboard(text)
+        if sys.platform == "darwin" and self._driver is not None:
+            subprocess.run(["pbcopy"], input=text, text=True, check=False)
 
     # -- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -277,7 +323,7 @@ class AgentApp(App):
                 self._add(Static(Text(f"› {msg['content']}"), classes="user"))
             elif msg["role"] == "assistant":
                 if msg.get("content"):
-                    self._add(Static(Markdown(msg["content"]), classes="assistant"))
+                    self._add(MessageView(msg["content"], classes="assistant"))
                 for call in msg.get("tool_calls") or []:
                     self._add(Static(Text(f"⏺ {_label(call, self.agent.config.tools)}"), classes="tool tool-ok"))
 
@@ -351,7 +397,7 @@ class AgentApp(App):
             self._status("ready")
 
     def _note(self, markdown: str) -> None:
-        self._add(Static(Markdown(markdown), classes="assistant"))
+        self._add(MessageView(markdown, classes="assistant"))
 
     def _view(self) -> None:
         if self.info.open_viewer is None:
@@ -422,10 +468,10 @@ class AgentApp(App):
     def _on_text(self, ev: TextDelta) -> None:
         if self._text is None:
             self._text_buf = ""
-            self._text = Static("", classes="assistant")
+            self._text = MessageView(classes="assistant")
             self._add(self._text)
         self._text_buf += ev.text
-        self._text.update(Markdown(self._text_buf))
+        self._text.set_source(self._text_buf)
 
     def _on_reasoning(self, ev: ReasoningDelta) -> None:
         if self._think is None:

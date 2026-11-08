@@ -30,6 +30,7 @@ flowchart LR
 - Every `tool_call` gets a `tool` message, even when interrupted (`INTERRUPTED`). Otherwise the next request is malformed.
 - Tool errors (`ToolError`, bad JSON, unknown tool) go back to the model as `Error: …` results. They never crash the turn. Device errors end the turn with `TurnEnd("error")`.
 - Esc → `Agent.cancel()`: stops between stream chunks (the stream generator is closed, ending the HTTP request) and before each tool. Ctrl+C also releases a worker blocked on a permission prompt (the answer stays DENY).
+- **Copy:** assistant text is a `MessageView` (textual's `Markdown` widget): Rich `Markdown` renderables in a `Static` can't be mouse-selected. `MessageView.set_source` re-applies the latest text after mount, because `Markdown` applies its constructor text on mount and would wipe deltas streamed before that. Don't override `_on_mount`: textual calls every class's `_on_mount` itself, so a `super()` call runs it twice. Ctrl+C (`action_copy_or_quit`) copies the prompt's selection or the screen selection and quits only when nothing is selected. `copy_to_clipboard` also runs `pbcopy` on macOS, since Terminal.app ignores OSC 52.
 
 ## MCP servers (`agent/mcp_client.py`)
 
