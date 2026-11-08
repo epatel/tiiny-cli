@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -24,12 +25,12 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Collapsible, Footer, Static, TextArea
 
-from tai.agent.loop import (Agent, Decision, Event, ReasoningDelta, TextDelta, ToolEnd, ToolStart,
-                            TurnEnd)
+from tai.agent.loop import (Agent, Decision, Event, Notice, ReasoningDelta, TextDelta, ToolEnd,
+                            ToolStart, TurnEnd)
 from tai.agent.device import MUTATING, DeviceCommands
 from tai.agent.tools import Preview, Tool
 from tai.client import TiinyError
-from tai.loader import LoadCancelled
+from tai.loader import LoadCancelled, ModelLoader
 from tai.models import ResolveError
 
 RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
@@ -37,6 +38,14 @@ RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
 HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · Esc interrupt · Ctrl+C quit
 **Commands:** `/tiiny` manage the device (`/tiiny help`) · `/clear` forget the conversation · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
+
+
+@dataclass
+class Activity:
+    """What the agent is doing right now, shown with elapsed time in the status line."""
+    label: str
+    detail: str = ""
+    started: float = field(default_factory=time.monotonic)
 
 
 @dataclass
@@ -75,12 +84,12 @@ class TuiLoaderUI:
         return bool(self.app.wait_for_modal(ConfirmScreen(question), default=False))
 
     def info(self, message: str) -> None:
-        self.app.call_from_thread(self.app._status, f"◐ {message}")
+        self.app.call_from_thread(self.app._busy, message)
 
     @contextmanager
     def progress(self, name: str):
         def update(pct: float, msg: str) -> None:
-            self.app.call_from_thread(self.app._status, f"◐ Loading {name} {pct:3.0f}%  {msg[:50]}")
+            self.app.call_from_thread(self.app._busy, f"Loading {name}", f"{pct:.0f}% {msg[:40]}".strip())
         yield update
 
 
@@ -166,6 +175,7 @@ class AgentApp(App):
     .tool { margin-top: 1; color: $warning; }
     .tool-ok { color: $success; }
     .tool-fail { color: $error; }
+    .notice { color: $text-muted; margin-top: 1; }
     Collapsible { border: none; padding: 0; margin: 0 0 0 2; }
     #status { height: 1; padding: 0 1; color: $text-muted; }
     #prompt { height: auto; max-height: 12; margin: 0 1; }
@@ -190,6 +200,8 @@ class AgentApp(App):
         self._tools: dict[str, tuple[Static, str]] = {}  # call id -> (line, label)
         self._pending: threading.Event | None = None  # a worker waiting on a modal
         self.device_busy = False  # a /tiiny command is running
+        self._activity: Activity | None = None
+        agent.reload_model = self._reload_agent_model
 
     # -- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -202,6 +214,7 @@ class AgentApp(App):
     def on_mount(self) -> None:
         self._replay(self.agent.messages)
         self._status("ready")
+        self.set_interval(1.0, self._render_activity)
         self.query_one("#prompt", PromptArea).focus()
         if self.info.initial:
             self._submit(self.info.initial)
@@ -215,7 +228,25 @@ class AgentApp(App):
         self.log_view.scroll_end(animate=False)
 
     def _status(self, text: str) -> None:
+        """A plain status (idle states); ends the current activity."""
+        self._activity = None
         self.query_one("#status", Static).update(text)
+
+    def _busy(self, label: str, detail: str = "") -> None:
+        """Show an ongoing activity; the elapsed time keeps counting while the label stays the same."""
+        if self._activity is None or self._activity.label != label:
+            self._activity = Activity(label, detail)
+        else:
+            self._activity.detail = detail
+        self._render_activity()
+
+    def _render_activity(self) -> None:
+        a = self._activity
+        if a is None:
+            return
+        secs = int(time.monotonic() - a.started)
+        parts = [f"◐ {a.label}", a.detail, f"{secs}s" if secs else ""]
+        self.query_one("#status", Static).update(" · ".join(p for p in parts if p))
 
     def _replay(self, messages: list[dict]) -> None:
         """Show a resumed conversation: user text, assistant text, tool-call labels."""
@@ -246,7 +277,7 @@ class AgentApp(App):
             return
         self._add(Static(Text(f"› {text}"), classes="user"))
         self.busy = True
-        self._status("◐ thinking…")
+        self._busy("thinking…")
         self.run_turn(text)
 
     def _command(self, cmd: str, arg: str) -> None:
@@ -271,7 +302,7 @@ class AgentApp(App):
         else:
             self.device_busy = True
             self._add(Static(Text(f"› /tiiny {arg}".rstrip()), classes="user"))
-            self._status(f"◐ /tiiny {sub or 'status'}…")
+            self._busy(f"/tiiny {sub or 'status'}")
             self.run_device(arg)
 
     @work(thread=True, group="device", exclusive=True, exit_on_error=False)
@@ -290,7 +321,10 @@ class AgentApp(App):
     def _device_done(self, markdown: str) -> None:
         self.device_busy = False
         self._note(markdown)
-        self._status("ready" if not self.busy else "◐ thinking…")
+        if self.busy:
+            self._busy("thinking…")
+        else:
+            self._status("ready")
 
     def _note(self, markdown: str) -> None:
         self._add(Static(Markdown(markdown), classes="assistant"))
@@ -316,8 +350,20 @@ class AgentApp(App):
 
     def approve(self, tool: Tool, args: dict, preview: Preview) -> Decision:
         """Called from the agent thread; blocks until the user answers the modal."""
-        self.call_from_thread(self._status, f"◐ waiting for you: {preview.title}")
+        self.call_from_thread(self._busy, f"waiting for you: {preview.title}")
         return self.wait_for_modal(PermissionScreen(preview), default=Decision.DENY)
+
+    def _reload_agent_model(self) -> None:
+        """Agent thread: load the agent's model again after something unloaded it."""
+        loader = ModelLoader(self.agent.client, TuiLoaderUI(self))
+        model = next((m for m in loader.catalog() if m.id == self.agent.config.model_id), None)
+        if model is None:
+            raise TiinyError(f"{self.agent.config.model_id} is not installed on the device")
+        try:
+            loader.ensure_loaded(model)
+        except LoadCancelled:
+            raise TiinyError(f"Reload cancelled: {model.name} is not loaded. "
+                             f"Use `/tiiny load {model.name}` when you want to continue.") from None
 
     def wait_for_modal(self, screen: ModalScreen, default):
         """From a worker thread: show ``screen`` and block until it is dismissed.
@@ -339,7 +385,7 @@ class AgentApp(App):
     def on_agent_event(self, message: AgentEvent) -> None:
         ev = message.event
         handler = {TextDelta: self._on_text, ReasoningDelta: self._on_reasoning, ToolStart: self._on_tool_start,
-                   ToolEnd: self._on_tool_end, TurnEnd: self._on_turn_end}[type(ev)]
+                   ToolEnd: self._on_tool_end, TurnEnd: self._on_turn_end, Notice: self._on_notice}[type(ev)]
         handler(ev)
         self.log_view.scroll_end(animate=False)
 
@@ -367,7 +413,7 @@ class AgentApp(App):
         line = Static(Text(f"⏺ {ev.label}"), classes="tool")
         self._tools[ev.call_id] = (line, ev.label)
         self._add(line)
-        self._status(f"◐ {ev.label}")
+        self._busy(ev.label)
 
     def _on_tool_end(self, ev: ToolEnd) -> None:
         entry = self._tools.pop(ev.call_id, None)
@@ -379,7 +425,12 @@ class AgentApp(App):
         body = ev.result if len(ev.result) <= RESULT_PREVIEW else ev.result[:RESULT_PREVIEW] + "\n…"
         title = _result_title(ev.result)
         self._add(Collapsible(Static(Text(body)), title=title, collapsed=True))
-        self._status("◐ thinking…")
+        self._busy("thinking…")
+
+    def _on_notice(self, ev: Notice) -> None:
+        self._end_text()
+        self._add(Static(Text(f"• {ev.text}"), classes="notice"))
+        self._busy("thinking…")
 
     def _on_turn_end(self, ev: TurnEnd) -> None:
         self._end_text()
@@ -394,7 +445,7 @@ class AgentApp(App):
     def action_interrupt(self) -> None:
         if self.busy:
             self.agent.cancel()
-            self._status("◐ interrupting…")
+            self._busy("interrupting…")
 
     def action_clear(self) -> None:
         if self.busy:

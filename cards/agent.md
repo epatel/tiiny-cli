@@ -48,6 +48,12 @@ flowchart LR
 - The frontmatter parser is a small built-in one (no PyYAML): `key: value`, quotes, `>`/`|` blocks and indented continuation lines.
 - In the TUI, `/skills` lists them and `/<name> [task]` sends "Use the `<name>` skill. [task]". `tai skills` lists them from the shell.
 
+## When the agent's model gets swapped out
+
+- The agent runs on the same NPU it can manage. A tool call like `tai -y image …` (through bash) can unload the agent's own model: the image model (23%) doesn't fit next to the coder (94%). This happened in a real session, where the model piped `echo Y` into the swap prompt. The system prompt now says to use `tai -y` and that it is reloaded automatically.
+- Recovery (`Agent._stream_or_reload`): if a model request fails with a "not loaded" 404 (`model_missing()` matches the device's wordings), the loop yields a `Notice`, calls `Agent.reload_model` (installed by the TUI), and retries the step once. The TUI's `_reload_agent_model` runs `ModelLoader.ensure_loaded` with `TuiLoaderUI`, so unloading whatever is in the way asks in a modal and progress shows in the status line. Declining becomes a `TiinyError` telling the user to `/tiiny load <model>`.
+- Status line: `_busy(label, detail)` shows `◐ label · detail · Ns`, re-rendered every second, for thinking, tool runs (e.g. a 60 s `tai image`), waiting for the user, loading, and `/tiiny`. The timer restarts only when the label changes. `_status(text)` is for idle states and ends the activity.
+
 ## /tiiny (`agent/device.py`)
 
 - `DeviceCommands.run(line)` returns Markdown: `status` (device info, NPU, loaded models, CPU/memory/disk), `models`, `load <m>`, `unload <m|all>`, `restart`, `shutdown`, `help`. Device endpoints: `/api/v1/sys/status`, `/sys/device_info` (slow, ~1.5 s), `POST /sys/reboot/` and `/sys/shutdown/`.

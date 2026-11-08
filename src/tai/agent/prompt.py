@@ -21,6 +21,9 @@ How to work:
 - If a tool call is denied, do not retry it. Ask the user what they want instead.
 - When the task is done, say briefly what you changed. Do not paste whole files back.
 - Paths are relative to the project root unless absolute.
+- You run on a Tiiny device. `tai` commands that use another model (e.g. `tai image`, `tai tts`)
+  may have to unload your own model: run them as `tai -y …` (never pipe answers into prompts).
+  You are reloaded automatically before your next step; tell the user that this takes a minute.
 """
 
 

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from tai.agent.loop import (DENIED, Agent, AgentConfig, Decision, ReasoningDelta, TextDelta, ToolEnd,
+from tai.agent.loop import (DENIED, Agent, AgentConfig, Decision, Notice, ReasoningDelta, TextDelta, ToolEnd,
                             ToolStart, Transcript, TurnEnd)
 from tai.agent.tools import ToolContext
 from tai.client import TiinyError
@@ -187,3 +187,35 @@ def test_extra_tools_from_config_are_offered_and_permission_checked(project):
     assert asked == ["MCP srv · write"] and calls == [{"x": 1}]
     offered = {t["function"]["name"]: t for t in client.requests[0]["tools"]}
     assert offered["mcp__srv__write"]["function"]["parameters"]["properties"] == {"x": {"type": "integer"}}
+
+
+MISSING = TiinyError('HTTP 404 POST /v1/chat/completions: "m" is not loaded.')
+
+
+def test_missing_model_is_reloaded_and_the_step_retried(project):
+    agent, client, _ = make(project, MISSING, text_reply("back"))
+    reloads = []
+    agent.reload_model = lambda: reloads.append(True)
+    events = list(agent.run("hi"))
+    notices = [e.text for e in events if isinstance(e, Notice)]
+    assert reloads == [True] and len(notices) == 2 and "no longer loaded" in notices[0]
+    assert events[-1] == TurnEnd("done") and agent.messages[-1] == {"role": "assistant", "content": "back"}
+    assert len(client.requests) == 2
+
+
+def test_failed_reload_ends_the_turn_with_its_error(project):
+    agent, _, _ = make(project, MISSING)
+
+    def fail():
+        raise TiinyError("Reload cancelled: m is not loaded.")
+
+    agent.reload_model = fail
+    assert list(agent.run("hi"))[-1] == TurnEnd("error", "Reload cancelled: m is not loaded.")
+
+
+def test_without_reload_hook_or_for_other_errors_no_reload(project):
+    agent, _, _ = make(project, MISSING)
+    assert list(agent.run("hi"))[-1].reason == "error"  # no hook
+    agent, _, _ = make(project, TiinyError("HTTP 500: boom"))
+    agent.reload_model = lambda: pytest.fail("should not reload")
+    assert list(agent.run("hi"))[-1] == TurnEnd("error", "HTTP 500: boom")

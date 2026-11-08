@@ -61,7 +61,13 @@ class TurnEnd:
     error: str | None = None
 
 
-Event = TextDelta | ReasoningDelta | ToolStart | ToolEnd | TurnEnd
+@dataclass
+class Notice:
+    """Something the user should know that isn't model output, e.g. a model reload."""
+    text: str
+
+
+Event = TextDelta | ReasoningDelta | ToolStart | ToolEnd | TurnEnd | Notice
 Approver = Callable[[Tool, dict, Preview], Decision]
 
 
@@ -111,6 +117,12 @@ class _Accumulator:
         return msg
 
 
+def model_missing(e: TiinyError) -> bool:
+    """The device's ways of saying a model isn't loaded (404 model_not_found)."""
+    text = str(e)
+    return "is not loaded" in text or "does not exist or is not running" in text or "model_not_found" in text
+
+
 def _delta_events(delta: dict) -> Iterator[Event]:
     if delta.get("reasoning_content"):
         yield ReasoningDelta(delta["reasoning_content"])
@@ -124,6 +136,9 @@ class Agent:
         self.transcript = transcript or Transcript()
         self.granted: set[str] = set()
         self._cancel = threading.Event()
+        # Called when the model is no longer loaded (e.g. a tool ran `tai image`, which swapped
+        # it out). Should load it again or raise TiinyError. None = just fail the turn.
+        self.reload_model: Callable[[], None] | None = None
 
     @property
     def messages(self) -> list[dict]:
@@ -150,7 +165,7 @@ class Agent:
 
     def _steps(self) -> Iterator[Event]:
         for _ in range(self.config.max_steps):
-            msg = yield from self._stream()
+            msg = yield from self._stream_or_reload()
             self._append(msg)
             calls = msg.get("tool_calls") or []
             for call in calls:
@@ -162,6 +177,18 @@ class Agent:
                 yield TurnEnd("done")
                 return
         yield TurnEnd("max_steps")
+
+    def _stream_or_reload(self) -> Iterator[Event]:
+        """Stream a reply; if the model has been unloaded meanwhile, reload it and retry once."""
+        try:
+            return (yield from self._stream())
+        except TiinyError as e:
+            if self.reload_model is None or not model_missing(e):
+                raise
+        yield Notice(f"{self.config.model_id} is no longer loaded (a tool probably swapped it out) — reloading it")
+        self.reload_model()
+        yield Notice("Model reloaded — continuing")
+        return (yield from self._stream())
 
     def _stream(self) -> Iterator[Event]:
         acc = _Accumulator()

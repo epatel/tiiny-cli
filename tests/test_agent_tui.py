@@ -297,3 +297,101 @@ def test_tiiny_errors_are_shown_not_raised(tmp_path):
             await tiiny(pilot, app, "load llama")
             assert "**error:** No model matches 'llama'" in texts(app)
     run(main())
+
+
+class SwappedOutClient:
+    """The agent's model was unloaded by a tool: first chat call 404s, image model holds the NPU."""
+
+    def __init__(self):
+        self.state = {"q/Coder": ("downloaded", 94), "t/Image": ("running", 23)}
+        self.log, self.chats = [], 0
+
+    def models(self):
+        types = {"q/Coder": "Text Generation", "t/Image": "Text-to-Image"}
+        return [{"id": i, "display_name": i.split("/")[1], "type": types[i], "npu_usage": n, "status": st}
+                for i, (st, n) in self.state.items()]
+
+    def running(self):
+        return {"instances": {"running": [{"model_id": i, "status": "running"}
+                                          for i, (st, _) in self.state.items() if st == "running"]}}
+
+    def npu(self):
+        return {"npu_total": 100}
+
+    def stop(self, model_id):
+        self.log.append(("stop", model_id))
+        self.state[model_id] = ("downloaded", self.state[model_id][1])
+
+    def launch(self, model_id):
+        self.log.append(("launch", model_id))
+        self.state[model_id] = ("running", self.state[model_id][1])
+        yield {"_event": "progress", "progress": 50, "message": "warming up"}
+        yield {"_event": "done", "progress": 100, "success": True}
+
+    def chat_stream(self, model, messages, **kw):
+        from tai.client import TiinyError
+        self.chats += 1
+        if self.state[model][0] != "running":
+            raise TiinyError(f'HTTP 404 POST /v1/chat/completions: "{model}" is not loaded.')
+        yield from text_reply("Here is your answer.")
+
+
+def make_swapped_app(root):
+    client = SwappedOutClient()
+    cfg = AgentConfig(model_id="q/Coder", system="SYS", ctx=ToolContext(root=root.resolve()))
+    return AgentApp(Agent(client, cfg, lambda *a: Decision.DENY, Transcript()), AppInfo("t")), client
+
+
+async def reload_prompt(pilot, app, answer):
+    """Send a message, wait for the reload confirmation, answer it, wait for the turn to end."""
+    from tai.agent.tui import ConfirmScreen
+    await send(pilot, "continue")
+    await wait_until(pilot, lambda: isinstance(app.screen, ConfirmScreen))
+    question = app.screen.question
+    await pilot.press(answer)
+    await wait_until(pilot, lambda: not app.busy)
+    return question
+
+
+def test_unloaded_agent_model_is_reloaded_after_asking(tmp_path):
+    async def main():
+        app, client = make_swapped_app(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            assert "Unload: Image (23%)" in await reload_prompt(pilot, app, "y")
+            log = texts(app)
+            assert "• q/Coder is no longer loaded" in log and "• Model reloaded — continuing" in log
+            assert "Here is your answer." in log
+            assert client.log == [("stop", "t/Image"), ("launch", "q/Coder")]
+    run(main())
+
+
+def test_declining_the_reload_explains_what_to_do(tmp_path):
+    async def main():
+        app, client = make_swapped_app(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await reload_prompt(pilot, app, "n")
+            assert "Use `/tiiny load Coder` when you want to continue" in texts(app)
+            assert client.log == []
+    run(main())
+
+
+def test_status_shows_activity_with_elapsed_time(tmp_path):
+    import time as _time
+
+    from tai.agent.tui import Activity
+
+    async def main():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            app._busy("bash tai image batman")
+            app._activity.started = _time.monotonic() - 42
+            app._render_activity()
+            await pilot.pause()
+            assert "◐ bash tai image batman · 42s" in texts(app)
+            app._busy("bash tai image batman", "more detail")  # same label: timer keeps running
+            assert app._activity.started < _time.monotonic() - 40
+            app._busy("Loading Coder", "50% warming up")  # new label: timer restarts
+            assert isinstance(app._activity, Activity) and int(_time.monotonic() - app._activity.started) == 0
+            app._status("ready")
+            assert app._activity is None
+    run(main())
