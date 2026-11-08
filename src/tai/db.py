@@ -42,7 +42,19 @@ MIGRATIONS = [
     ALTER TABLE session ADD COLUMN cwd TEXT;
     ALTER TABLE message ADD COLUMN data TEXT
     """,
+    # 4: what was typed into `tai agent` (prompts and /commands), per project folder
+    """
+    CREATE TABLE prompt_history (
+        id INTEGER PRIMARY KEY,
+        cwd TEXT NOT NULL,
+        text TEXT NOT NULL,
+        created_at REAL NOT NULL
+    );
+    CREATE INDEX prompt_history_cwd ON prompt_history(cwd, id)
+    """,
 ]
+
+PROMPT_HISTORY_LIMIT = 500  # prompts loaded into `tai agent`'s Up/Down history
 
 
 def migrate(conn: sqlite3.Connection) -> int:
@@ -174,3 +186,15 @@ class Store:
     def clear_messages(self, session_id: int) -> None:
         with self.conn:
             self.conn.execute("DELETE FROM message WHERE session_id = ?", (session_id,))
+
+    # -- agent prompt history ----------------------------------------------
+    def add_prompt(self, cwd: Path, text: str) -> None:
+        with self.conn:
+            self.conn.execute("INSERT INTO prompt_history(cwd, text, created_at) VALUES (?,?,?)",
+                              (str(cwd), text, time.time()))
+
+    def prompts(self, cwd: Path) -> list[str]:
+        """The latest PROMPT_HISTORY_LIMIT prompts typed in ``cwd``, oldest first."""
+        rows = self.conn.execute("SELECT text FROM prompt_history WHERE cwd = ? ORDER BY id DESC LIMIT ?",
+                                 (str(cwd), PROMPT_HISTORY_LIMIT)).fetchall()
+        return [r[0] for r in reversed(rows)]

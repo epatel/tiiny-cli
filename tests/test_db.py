@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -73,3 +74,15 @@ def test_agent_sessions_store_full_messages(tmp_path):
     assert s.last_session()["id"] == chat  # chat -c never picks agent sessions
     assert s.last_session("agent", "/proj")["id"] == sid
     assert s.last_session("agent", "/other") is None
+
+
+def test_prompt_history_is_per_folder_oldest_first_and_capped(tmp_path, monkeypatch):
+    s = Store(tmp_path / "t.db")
+    proj, other = Path("/proj"), Path("/other")
+    for text in ("a", "b", "c"):
+        s.add_prompt(proj, text)
+    s.add_prompt(other, "x")
+    assert s.prompts(proj) == ["a", "b", "c"]
+    assert s.prompts(other) == ["x"]
+    monkeypatch.setattr(db, "PROMPT_HISTORY_LIMIT", 2)
+    assert s.prompts(proj) == ["b", "c"]

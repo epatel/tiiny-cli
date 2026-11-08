@@ -225,6 +225,36 @@ def test_pasted_newlines_are_kept_and_not_sent(tmp_path):
     run(main())
 
 
+def test_up_down_recall_earlier_prompts_and_save_new_ones(tmp_path):
+    from tai.agent.tui import PromptArea
+
+    async def main():
+        app = make_app(tmp_path)
+        saved = []
+        app.info.history, app.info.on_prompt = ["fix the tests", "line 1\nline 2"], saved.append
+        async with app.run_test(size=(100, 30)) as pilot:
+            area = app.query_one(PromptArea)
+            await pilot.click("#prompt")
+            await type_text(pilot, "draft")
+            await pilot.press("up")
+            assert area.text == "line 1\nline 2"
+            await pilot.press("up")  # cursor is on line 2: moves to line 1 first
+            assert area.text == "line 1\nline 2"
+            await pilot.press("up")
+            assert area.text == "fix the tests"
+            await pilot.press("up")  # oldest: stays
+            assert area.text == "fix the tests"
+            await pilot.press("down", "down")
+            assert area.text == "draft"
+            area.load_text("/help")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert saved == ["/help"] and area.text == ""
+            await pilot.press("up")
+            assert area.text == "/help"
+    run(main())
+
+
 def test_blank_enter_sends_nothing(tmp_path):
     from tai.agent.tui import PromptArea
 

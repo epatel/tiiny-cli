@@ -28,6 +28,7 @@ from textual.widgets import Collapsible, Footer, Static, TextArea
 from tai.agent.loop import (Agent, Decision, Event, Notice, ReasoningDelta, TextDelta, ToolEnd,
                             ToolStart, TurnEnd)
 from tai.agent.device import MUTATING, DeviceCommands
+from tai.agent.history import PromptHistory
 from tai.agent.tools import Preview, Tool
 from tai.client import TiinyError
 from tai.loader import LoadCancelled, ModelLoader
@@ -35,7 +36,7 @@ from tai.models import ResolveError
 
 RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
 
-HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · Esc interrupt · Ctrl+C quit
+HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · ↑/↓ earlier prompts · Esc interrupt · Ctrl+C quit
 **Commands:** `/tiiny` manage the device (`/tiiny help`) · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
 
@@ -56,6 +57,8 @@ class AppInfo:
     skills: list[tuple[str, str]] = field(default_factory=list)  # (name, description)
     servers: list[str] = field(default_factory=list)  # one status line per MCP server
     open_viewer: Callable[[], str] | None = None  # starts the browser viewer, opens it, returns its URL
+    history: list[str] = field(default_factory=list)  # earlier prompts in this folder, oldest first
+    on_prompt: Callable[[str], None] = lambda text: None  # saves a typed prompt to the history
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -97,7 +100,8 @@ class TuiLoaderUI:
 class PromptArea(TextArea):
     """Multi-line prompt: Enter sends; Ctrl+J, Alt+Enter, Shift+Enter (where the terminal
     reports it) or a trailing backslash + Enter insert a newline. Pasted text keeps its
-    newlines and is not sent until Enter."""
+    newlines and is not sent until Enter. Up on the first line / Down on the last line
+    walk through earlier prompts (``prompts``)."""
 
     NEWLINE_KEYS = {"ctrl+j", "alt+enter", "shift+enter"}
 
@@ -106,13 +110,16 @@ class PromptArea(TextArea):
             self.area, self.value = area, value
             super().__init__()
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, prompts: PromptHistory | None = None, **kwargs) -> None:
         super().__init__(soft_wrap=True, show_line_numbers=False, highlight_cursor_line=False,
-                         placeholder="Ask tai agent to do something…  (Enter send · Ctrl+J new line · /help)",
+                         placeholder="Ask tai agent to do something…  (Enter send · Ctrl+J new line · ↑ history · /help)",
                          **kwargs)
+        self.prompts = prompts or PromptHistory()
 
     async def _on_key(self, event: events.Key) -> None:
-        if event.key in self.NEWLINE_KEYS:
+        if self._recall(event):
+            self._take(event)
+        elif event.key in self.NEWLINE_KEYS:
             self._take(event)
             self.insert("\n")
         elif event.key == "enter":
@@ -120,6 +127,20 @@ class PromptArea(TextArea):
             self._enter()
         else:
             await super()._on_key(event)
+
+    def _recall(self, event: events.Key) -> bool:
+        """Up on the first line / Down on the last line: show an older / newer prompt."""
+        row = self.cursor_location[0]
+        if event.key == "up" and row == 0:
+            text = self.prompts.older(self.text)
+        elif event.key == "down" and row == self.document.line_count - 1:
+            text = self.prompts.newer()
+        else:
+            return False
+        if text is not None:
+            self.load_text(text)
+            self.move_cursor(self.document.end)
+        return text is not None
 
     @staticmethod
     def _take(event: events.Key) -> None:
@@ -209,7 +230,7 @@ class AgentApp(App):
         yield Static(self.info.title, id="title")
         yield VerticalScroll(id="log")
         yield Static("", id="status")
-        yield PromptArea(id="prompt")
+        yield PromptArea(PromptHistory(self.info.history), id="prompt")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -264,6 +285,8 @@ class AgentApp(App):
     def on_prompt_area_submitted(self, event: PromptArea.Submitted) -> None:
         text = event.value.strip()
         event.area.clear()
+        if event.area.prompts.add(text):
+            self.info.on_prompt(text)
         if text:
             self._submit(text)
 
