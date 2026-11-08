@@ -42,7 +42,7 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
 - 2026-11-08 — Chat history is persisted text-only. Images attached in a past turn are not re-sent on resume.
 
 ## Current state / handoff
-All seven installed models were exercised live through `tai`: chat (Qwen3-Coder-Next, Qwen3.6 incl. vision and thinking toggle), Z-Image-Turbo, OmniVoice (incl. `instruct`), Qwen3-ASR, Qwen3-Embedding and TRELLIS 3D (shape→texture→export, and `tai 3d --faces 200000` → 16 MB GLB in ~7 min). 151 unit tests pass (no device needed; the MCP tests start a real stdio test server). `tai agent` is built and fully tested headlessly, but has not had a live run yet: it needs the user at the keyboard. After testing, the device state was left as is (the user said not to reload the coder model).
+All seven installed models were exercised live through `tai`: chat (Qwen3-Coder-Next, Qwen3.6 incl. vision and thinking toggle), Z-Image-Turbo, OmniVoice (incl. `instruct`), Qwen3-ASR, Qwen3-Embedding and TRELLIS 3D (shape→texture→export, and `tai 3d --faces 200000` → 16 MB GLB in ~7 min). 151 unit tests pass (no device needed; the MCP tests start a real stdio test server). `tai agent` is built and fully tested headlessly, but has not had a live run yet: it needs the user at the keyboard. Verified live 2026-11-08: TRELLIS `stage_specs` lists `seed` + `inference_quality` for shape and texture, so `tai 3d --quality fast --seed 1` sends both (8m22s: shape 2:30, texture 1:14, export 4:34 at 0% NPU); `tai image --seed` reproduces byte-identical PNGs. After testing, the device state was left as is (the user said not to reload the coder model).
 
 ## Open questions
-- Do TRELLIS's `stage_specs` actually list `seed`/`inference_quality` for shape and texture? `tai 3d` now filters by them (as Tiiny Studio does), but this hasn't been run live: check that `--quality/--seed` still reach the device.
+- None right now.
