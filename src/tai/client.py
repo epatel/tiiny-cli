@@ -207,6 +207,10 @@ class TiinyClient:
         d = self._json("POST", "/v1/3d/tasks", data=data, files=files)
         return d["data"]["task_id"]
 
+    def task3d_capabilities(self) -> dict:
+        """The 3D model's stages, inputs and per-stage `stage_specs` (params + controls it accepts)."""
+        return self._json("GET", "/v1/3d/capabilities").get("data") or {}
+
     def task3d(self, task_id: str) -> dict:
         return self._json("GET", f"/v1/3d/tasks/{task_id}")["data"]
 

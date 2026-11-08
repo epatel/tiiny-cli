@@ -82,3 +82,19 @@ class AgentRequest:
     @property
     def session(self) -> SessionRef:
         return SessionRef(resume=self.resume, cont=self.cont)
+
+
+@dataclass(frozen=True)
+class ImageOptions:
+    """`tai image` generation settings. The device doesn't report the seed it used,
+    so a missing one is picked here to keep every result reproducible."""
+    size: str = "1024x1024"
+    seed: int | None = None
+    steps: int | None = None
+    guidance: float | None = None
+    negative: str | None = None
+
+    def request(self, seed: int) -> dict:
+        extra = {"size": self.size, "seed": seed, "steps": self.steps,
+                 "guidance_scale": self.guidance, "negative_prompt": self.negative}
+        return {k: v for k, v in extra.items() if v is not None}

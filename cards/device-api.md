@@ -29,7 +29,7 @@ Model ids contain a slash (`Qwen/Qwen3-Coder-Next`), and the slash goes straight
 |---|---|---|
 | chat / vision | `POST /v1/chat/completions` | OpenAI format, SSE streaming. Images go in as `image_url` data URLs. Reasoning streams in `delta.reasoning_content`. Thinking is toggled with `chat_template_kwargs: {enable_thinking: bool}`; `reasoning_effort` is ignored |
 | embeddings | `POST /v1/embeddings` | OpenAI format; Qwen3-Embedding returns 1024 dims |
-| image | `POST /v1/images/generations` | OpenAI format, returns `b64_json`, `size: "WxH"`. `POST /v1/image/generate` returns raw PNG bytes instead |
+| image | `POST /v1/images/generations` | OpenAI format, returns `b64_json`, `size: "WxH"`. Also takes `seed`, `steps`, `guidance_scale`, `negative_prompt`. The seed used is not returned, so `tai image` always sends one (random by default) and prints it. `POST /v1/image/generate` returns raw PNG bytes instead |
 | tts | `POST /v1/synthesize` `{model, text, config?}` | Returns JSON `{audio_data: base64 WAV 24 kHz mono, duration, …}`. Voice design goes in as `config: {instruct: "female, british accent"}`; a top-level `instruct` is rejected. **`/v1/audio/speech` returns 500 "upstream TTS model failed" for OmniVoice, so don't use it.** Valid instruct words: `male/female`, age groups, `low/high pitch`, `whisper`, accents |
 | asr | `POST /v1/audio/transcriptions` | multipart `model`, `file`, optional `language`; returns `{text}` |
 | 3d | `/v1/3d/*` | The gateway maps this onto the TRELLIS container's `/v1/*`. Multi-stage pipeline: shape → texture → (simplify) → export, polled per task. Any 5xx during polling (e.g. 504) is transient |
@@ -40,7 +40,7 @@ Implemented in `src/tai/mesh.py`: `Mesh3D.generate` runs the stages, `run` submi
 
 - `POST /v1/3d/tasks` (form fields): `stage`, `image` (file), `params` (JSON string), `input_refs` (JSON string of `{input_name: {task_id, artifact_id}}`).
 - `GET /v1/3d/tasks/{id}` → `data.status` (`queued`/`running`/`completed`/`failed`), `progress`, `message`; when completed, `result.output.artifacts[]`, each with `artifact_id`, `artifact_type` and `filename`.
-- `GET /v1/3d/tasks/{id}/artifacts/{artifact_id}` downloads an artifact. `GET /v1/3d/capabilities` lists the stages and their params.
+- `GET /v1/3d/tasks/{id}/artifacts/{artifact_id}` downloads an artifact. `GET /v1/3d/capabilities` lists the stages and their params. TRELLIS rejects params a stage doesn't list in `stage_specs[stage]` (`params` keys + `controls`), so `tai 3d` filters `inference_quality`/`seed` per stage (`MeshOptions.controls_for`).
 - Inputs per stage: shape takes `image`; texture and simplify take `shape_artifact`; export takes `shape_artifact` + `material_artifact` (texture's output), optionally `geometry_artifact` (simplify's output), and returns `mesh_glb`.
 - Rough timings: shape ≈ 4 min, texture ≈ 2 min, export ≈ 8 min. An unsimplified GLB is about 120 MB. With simplify (`target_faces: 200000`, ≈ 25 s) export drops to ≈ 25 s and the GLB to about 16 MB. Simplify outputs an artifact of type `geometry…`.
 

@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import platform
+import random
 import subprocess
 import sys
 import time
@@ -26,7 +27,7 @@ from tai.db import Store
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
 from tai.models import Model, ResolveError, build_catalog, resolve
-from tai.options import AgentRequest, AskOutput, ChatOptions, Question, SessionRef, bundle, chat_options
+from tai.options import AgentRequest, AskOutput, ChatOptions, ImageOptions, Question, SessionRef, bundle, chat_options
 
 out = Console()
 err = Console(stderr=True)
@@ -491,16 +492,22 @@ def _open(path: Path) -> None:
 @click.option("-m", "--model")
 @click.option("-o", "--output", type=click.Path(path_type=Path), default=Path("image.png"), show_default=True)
 @click.option("--size", default="1024x1024", show_default=True, help="WIDTHxHEIGHT")
+@click.option("--seed", type=click.IntRange(0), help="Reuse a seed to reproduce an image (default: random).")
+@click.option("--steps", type=click.IntRange(1), help="Denoising steps (default: the model's own).")
+@click.option("--guidance", type=float, help="Guidance scale (default: the model's own).")
+@click.option("--negative", help="What the image should not contain.")
 @click.option("--open", "open_", is_flag=True, help="Open the image when done.")
+@bundle("opts", ImageOptions, "size", "seed", "steps", "guidance", "negative")
 @pass_app
-def image(app: App, prompt, model, output, size, open_):
+def image(app: App, prompt, model, output, opts: ImageOptions, open_):
     """Generate an image from PROMPT."""
     m = app.model_for("image", model)
     app.ensure_loaded(m)
+    seed = random.randrange(2**31) if opts.seed is None else opts.seed
     with err.status(f"Generating with {m.name}…"):
-        data = app.client.image(m.id, " ".join(prompt), size=size)
+        data = app.client.image(m.id, " ".join(prompt), **opts.request(seed))
     output.write_bytes(data)
-    click.echo(f"Saved {output}")
+    click.echo(f"Saved {output} (seed {seed})")
     if open_:
         _open(output)
 

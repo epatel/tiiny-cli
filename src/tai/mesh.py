@@ -32,6 +32,14 @@ class MeshOptions:
         c = {"inference_quality": self.quality, "seed": self.seed}
         return {k: v for k, v in c.items() if v is not None} or None
 
+    def controls_for(self, spec) -> dict | None:
+        """The controls a stage accepts. TRELLIS rejects params a stage doesn't list in
+        its `stage_specs` entry (params + controls); without a spec, send them all."""
+        if not self.controls or not isinstance(spec, dict):
+            return self.controls
+        allowed = set(spec.get("params") or {}) | set(spec.get("controls") or [])
+        return {k: v for k, v in self.controls.items() if k in allowed} or None
+
 
 @dataclass(frozen=True)
 class StageResult:
@@ -56,9 +64,10 @@ class Mesh3D:
 
     def generate(self, image: Path, output_name: str, opts: MeshOptions) -> bytes:
         """Run the whole pipeline and return the .glb bytes."""
-        shape = self.run("shape", image=image, params=opts.controls)
+        controls = self._stage_controls(opts)
+        shape = self.run("shape", image=image, params=controls["shape"])
         shape_ref = {"shape_artifact": shape.ref("shape")}
-        texture = self.run("texture", input_refs=shape_ref, params=opts.controls)
+        texture = self.run("texture", input_refs=shape_ref, params=controls["texture"])
         refs = {**shape_ref, "material_artifact": texture.ref("material")}
         if opts.faces:
             refs.update(self._simplify(shape_ref, opts.faces))
@@ -67,6 +76,11 @@ class Mesh3D:
         if glb is None:
             raise TiinyError("3D export produced no .glb")
         return self.client.task3d_artifact(export.task_id, glb["artifact_id"])
+
+    def _stage_controls(self, opts: MeshOptions) -> dict:
+        """Controls per stage (shape, texture), filtered by the model's `stage_specs`."""
+        specs = (self.client.task3d_capabilities().get("stage_specs") or {}) if opts.controls else {}
+        return {stage: opts.controls_for(specs.get(stage)) for stage in ("shape", "texture")}
 
     def _simplify(self, shape_ref: dict, faces: int) -> dict:
         result = self.run("simplify", input_refs=shape_ref,

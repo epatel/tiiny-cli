@@ -29,6 +29,19 @@ A digest of the community notes at https://github.com/thezolon/tiiny-api-notes (
 - **Vault / knowledge base `/kb/*`** ("SimpleMem", has its own spec at `/kb/openapi.json`): upload → `finalize` (needs an **embedding model loaded**) → `retrieve` (wants a chat model too unless `fast_mode: true`; `include_memory_context` defaults to **true** and mixes in personal memory) → rename / download / `delete-memory`. Memory pipeline: conversation days, nightly "dreaming" 23:00–05:00 into facts and proposals.
 - **On-device assistant:** connectors (Gmail, Outlook, Telegram, Discord, WhatsApp…) and its own MCP server registry at `/v1/mcp/servers` (**docs**, untested).
 
+## Extra details from Tiiny Studio's code
+
+https://github.com/thezolon/tiiny-studio (same author, a web studio on top of the API; read at commit `844816d`, 2026-11-03). Its `docs/DEVICE-API.md` repeats the notes. The details below come from its code (`media.py`, `static/image.js`, `server.py`) and are missing above:
+
+- **Image seed:** the device doesn't return the seed it used. The studio always sends one (random in `0..2**31` unless the user set one) so it can show, copy and reuse it (`tai image` now does the same and prints it). "Vary" means the same settings with a new seed. `n` images = `n` requests with seeds `seed, seed+1, …`. Accepted fields (probed on 0.1.35): `model, prompt, negative_prompt, n, size, seed, steps, guidance_scale` (+ `response_format: "b64_json"`). `steps`/`guidance_scale` are left out when "auto", so the model's own defaults apply. The studio's time estimate assumes a model named `*turbo*` is fast (~10 s per 512² unit).
+- **Image sizes:** a model's catalog `desc` can list its verified sizes (e.g. "512x512 is native … verified: 432x768, 768x432"). Sizes not on that list can come out with seams, so the studio only offers listed sizes when the `desc` has two or more.
+- **`xh2a backend fail` retry:** the studio retries up to 6 times, 10 s apart (`STUDIO_WARMUP_WAIT`), not once.
+- **TRELLIS controls (answers our open question):** `output_precision`, `inference_quality`, `asset_quality` and `seed` go in each stage's `params` JSON. The studio sends them to every stage, but first filters them by `/v1/3d/capabilities` → `stage_specs[stage].params ∪ .controls`, because TRELLIS rejects params a stage doesn't list (`tai 3d` now does the same filter). `simplify` gets only `{"target_faces": N}`; `background` gets `{}`. With two 3D models loaded, add `?model=` to every `/v1/3d` call. Uploading shape + geometry + material together goes over the device's **200 MB request limit**, which is why `input_refs` matters.
+- **Hunyuan3D input:** pixels with alpha < 32 are set to 0 before `shape`. Otherwise faint alpha turns into a flat card.
+- **ASR:** WAV input is downmixed and resampled to 16-bit 16 kHz mono before `/v1/audio/transcriptions` (48 kHz stereo gives poor results). Other formats are sent unchanged. `language` is sent only when it is set.
+- **Per-model options:** `/v1/capabilities?model=` (chat, TTS), `/v1/music/info`, `/v1/3d/capabilities`, `/v1/video/info`. Image, OCR and ASR models have none, so use the catalog row (`supported`, `desc`).
+- **Timeouts the studio uses:** image 3600 s, chat 900 s, load/unload 120 s, `unload_all` 180 s, shutdown 20 s.
+
 ## Privacy: tai's chats are captured on the device
 
 - **Every chat sent through the gateway's `/v1/chat/completions` is captured** into the vault as that day's "conversation day", not only TiinyOS's own chats. That includes `tai ask`, `tai chat` and `tai agent`. It lands within ~15–50 s (batched to whole minutes); exact duplicates (same prompt *and* answer) are skipped. The text isn't readable or listed through the API, and TiinyOS doesn't show it.

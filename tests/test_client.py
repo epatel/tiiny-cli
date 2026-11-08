@@ -68,6 +68,22 @@ def test_image_decodes_b64(client):
 
 
 @respx.mock
+def test_image_sends_extra_fields(client):
+    route = respx.post(f"{BASE}/v1/images/generations").mock(return_value=httpx.Response(
+        200, json={"data": [{"b64_json": base64.b64encode(b"\x89PNG").decode()}]}))
+    client.image("m", "cat", size="512x512", seed=3, steps=8)
+    body = json.loads(route.calls[0].request.content)
+    assert (body["size"], body["seed"], body["steps"]) == ("512x512", 3, 8)
+
+
+@respx.mock
+def test_task3d_capabilities_unwraps_data(client):
+    respx.get(f"{BASE}/v1/3d/capabilities").mock(return_value=httpx.Response(
+        200, json={"data": {"stage_specs": {"shape": {}}}}))
+    assert client.task3d_capabilities() == {"stage_specs": {"shape": {}}}
+
+
+@respx.mock
 def test_task3d_submit_encodes_refs(client):
     route = respx.post(f"{BASE}/v1/3d/tasks").mock(
         return_value=httpx.Response(200, json={"status": "success", "data": {"task_id": "t1"}}))

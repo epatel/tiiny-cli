@@ -18,13 +18,17 @@ ARTIFACTS = {
 
 
 class FakeClient:
-    def __init__(self, polls=None):
+    def __init__(self, polls=None, caps=None):
         self.submits: list[tuple[str, dict]] = []
+        self.caps = caps or {}
         self.polls = polls or {}  # stage -> list of poll results (dict or Exception) before completion
 
     def task3d_submit(self, stage, **kw):
         self.submits.append((stage, kw))
         return f"t-{stage}"
+
+    def task3d_capabilities(self):
+        return self.caps
 
     def task3d(self, task_id):
         stage = task_id.removeprefix("t-")
@@ -72,6 +76,16 @@ def test_faces_adds_simplify_and_geometry_ref():
     assert stages["simplify"]["params"] == {"simplify": True, "target_faces": 200_000}
     assert stages["export"]["input_refs"]["geometry_artifact"] == {"task_id": "t-simplify", "artifact_id": "G"}
     assert stages["shape"]["params"] is None  # no controls given
+
+
+def test_controls_are_filtered_by_stage_specs():
+    caps = {"stage_specs": {"shape": {"params": {"seed": {}}, "controls": ["inference_quality"]},
+                            "texture": {"params": {}, "controls": ["asset_quality"]}}}
+    c = FakeClient(caps=caps)
+    pipeline(c).generate(Path("img.png"), "out.glb", MeshOptions(quality="fast", seed=7))
+    stages = {stage: kw for stage, kw in c.submits}
+    assert stages["shape"]["params"] == {"inference_quality": "fast", "seed": 7}
+    assert stages["texture"]["params"] is None  # it accepts neither
 
 
 def test_polls_until_done_and_retries_gateway_5xx():
