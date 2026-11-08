@@ -9,6 +9,7 @@ overwrite an existing file, so the tool doesn't need the write permission.
 
 from __future__ import annotations
 
+import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,7 @@ from tai.agent.viewer import AskCancelled, Viewer, kind_for
 from tai.client import TiinyClient
 from tai.loader import LoadCancelled, LoaderUI, ModelLoader
 from tai.models import resolve
+from tai.options import ImageOptions
 
 
 @dataclass
@@ -61,11 +63,15 @@ def make_image_tool(m: MediaContext) -> Tool:
         except LoadCancelled:
             raise ToolError("The user declined unloading models, so no image was generated") from None
         m.ui.info(f"Generating image with {model.name}")
-        data = m.client.image(model.id, args["prompt"], size=args.get("size") or "1024x1024")
+        opts = ImageOptions(size=args.get("size") or "1024x1024", seed=args.get("seed"),
+                            steps=args.get("steps"), guidance=args.get("guidance_scale"),
+                            negative=args.get("negative_prompt"))
+        seed = random.randrange(2**31) if opts.seed is None else int(opts.seed)  # the device doesn't report it
+        data = m.client.image(model.id, args["prompt"], **opts.request(seed))
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         m.viewer.present("image", title=args["prompt"], path=target)
-        return f"Saved {ctx.show(target)} ({len(data) // 1024} KB) and showed it in the viewer."
+        return f"Saved {ctx.show(target)} ({len(data) // 1024} KB, seed {seed}) and showed it in the viewer."
 
     return Tool("image", "Generate an image from a text prompt on the Tiiny's image model. Saves a PNG in the "
                          "project (default images/<prompt>.png) and shows it to the user in the viewer. "
@@ -73,6 +79,11 @@ def make_image_tool(m: MediaContext) -> Tool:
                 {"prompt": {"type": "string", "description": "What to draw, in detail"},
                  "path": {"type": "string", "description": "Where to save, relative to the project"},
                  "size": {"type": "string", "description": "WIDTHxHEIGHT, default 1024x1024"},
+                 "seed": {"type": "integer", "description": "Seed; the same seed and settings give the same "
+                                                            "image (default: random, reported in the result)"},
+                 "steps": {"type": "integer", "description": "Denoising steps (default: the model's own)"},
+                 "guidance_scale": {"type": "number", "description": "Guidance scale (default: the model's own)"},
+                 "negative_prompt": {"type": "string", "description": "What the image should not contain"},
                  "model": {"type": "string", "description": "Image model (default: the installed one)"}},
                 run, required=["prompt"])
 

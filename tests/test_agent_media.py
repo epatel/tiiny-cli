@@ -53,8 +53,9 @@ class FakeDevice:
         self.status[model_id] = "running"
         yield {"_event": "done", "progress": 100, "success": True}
 
-    def image(self, model, prompt, size="1024x1024"):
+    def image(self, model, prompt, size="1024x1024", **extra):
         self.log.append(("image", model, prompt, size))
+        self.extra = extra
         return b"\x89PNG" + b"0" * 2048
 
 
@@ -93,8 +94,9 @@ def test_slug_and_free_path(tmp_path):
 
 def test_image_asks_before_unloading_the_agent_then_saves_and_shows(ctx):
     tools, m = tools_for(True)
-    out = tools["image"].run({"prompt": "Batman in the rain"}, ctx)
-    assert out == "Saved images/batman-in-the-rain.png (2 KB) and showed it in the viewer."
+    out = tools["image"].run({"prompt": "Batman in the rain", "seed": 15, "guidance_scale": 3.5}, ctx)
+    assert out == "Saved images/batman-in-the-rain.png (2 KB, seed 15) and showed it in the viewer."
+    assert m.client.extra == {"seed": 15, "guidance_scale": 3.5}
     assert "Coder (94%) — the agent's model" in m.ui.questions[0]
     assert m.client.log == [("stop", "q/Coder"), ("launch", "t/Image"),
                             ("image", "t/Image", "Batman in the rain", "1024x1024")]
@@ -105,7 +107,9 @@ def test_image_asks_before_unloading_the_agent_then_saves_and_shows(ctx):
 def test_image_never_overwrites_and_stays_inside_the_project(ctx, tmp_path_factory):
     tools, m = tools_for(True)
     (ctx.root / "logo.png").write_bytes(b"keep me")
-    assert "Saved logo-2.png" in tools["image"].run({"prompt": "logo", "path": "logo.png", "size": "512x512"}, ctx)
+    out = tools["image"].run({"prompt": "logo", "path": "logo.png", "size": "512x512"}, ctx)
+    assert "Saved logo-2.png" in out
+    assert f"seed {m.client.extra['seed']})" in out  # no seed given: a random one, reported back
     assert (ctx.root / "logo.png").read_bytes() == b"keep me"
     outside = tmp_path_factory.mktemp("elsewhere") / "x.png"
     with pytest.raises(ToolError, match="inside the project"):

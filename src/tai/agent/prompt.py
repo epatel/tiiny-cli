@@ -27,6 +27,8 @@ How to work:
 - You run on a Tiiny device. `tai` commands that use another model (e.g. `tai image`, `tai tts`)
   may have to unload your own model: run them as `tai -y …` (never pipe answers into prompts).
   You are reloaded automatically before your next step; tell the user that this takes a minute.
+  Slow ones need a longer bash `timeout`: `tai 3d` takes 5-10 minutes (use 900), `tai tts`/`tai asr`
+  on long input a few minutes (use 300).
 """
 
 
