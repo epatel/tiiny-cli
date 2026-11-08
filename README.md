@@ -67,3 +67,7 @@ make help    # all targets
 ```
 
 See `CLAUDE.md` and `cards/` for how the device API works and how swapping is decided.
+
+## License
+
+[MIT](LICENSE)
