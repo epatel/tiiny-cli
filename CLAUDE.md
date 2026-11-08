@@ -8,7 +8,7 @@ Always read @project-plan.md before starting. It holds the shared goal and curre
 
 These are standard and used the standard way. There are no cards for them: read the code and apply the usual idioms.
 
-- **click**: one group `cli` in `src/tai/cli.py`; every command takes `App` via `@pass_app` (lazy `client`, `store`). `TaiGroup.invoke` turns `ConfigError`/`TiinyError`/`ResolveError` into `error: …` + exit 1.
+- **click**: one group `cli` in `src/tai/cli.py`; every command takes `App` via `@pass_app` (lazy `client`, `store`). `TaiGroup.invoke` turns `ConfigError`/`TiinyError`/`ResolveError` into `error: …` + exit 1. The `tai chat` REPL is `ChatSession` in `src/tai/chat.py`: state in `SessionState`, one `cmd_*` method per `/command` registered in `self.commands`, and the model reply injected as a callable (so `tests/test_chat.py` needs no device).
 - **httpx** (sync): all HTTP is in `src/tai/client.py` (`TiinyClient`). SSE is parsed by `iter_sse`. No OpenAI SDK.
 - **rich**: `out` (stdout) for results, `err` (stderr) for progress and prompts, so stdout stays pipeable. Streamed chat text goes straight to `sys.stdout`.
 - **sqlite3**: `src/tai/db.py`, `PRAGMA user_version` + an append-only `MIGRATIONS` list. The DB lives at `$TAI_HOME/tai.db` (default `~/.local/share/tai/`).

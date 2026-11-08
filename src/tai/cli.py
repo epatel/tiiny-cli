@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import mimetypes
 import os
@@ -18,6 +17,7 @@ from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from tai import __version__
+from tai.chat import ChatSession, SessionState, user_message
 from tai.client import TiinyClient, TiinyError
 from tai.config import ConfigError, data_dir, load_settings
 from tai.db import Store
@@ -254,18 +254,6 @@ def config_unset(app: App, key):
 
 
 # ---------------------------------------------------------------- chat
-def _image_part(path: Path) -> dict:
-    mime = mimetypes.guess_type(path.name)[0] or "image/png"
-    b64 = base64.b64encode(path.read_bytes()).decode()
-    return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
-
-
-def _user_message(text: str, images: list[Path]) -> dict:
-    if not images:
-        return {"role": "user", "content": text}
-    return {"role": "user", "content": [{"type": "text", "text": text}, *map(_image_part, images)]}
-
-
 def _think_extra(app: App, model: Model, think: bool | None) -> dict:
     if think is None:
         s = app.store.get_setting("think")
@@ -319,7 +307,7 @@ def ask(app: App, prompt, model, system, files, think, show_thinking, as_json):
     m = app.model_for("chat", model)
     images, text = _split_files(m, files, text)
     app.ensure_loaded(m)
-    messages = ([{"role": "system", "content": system}] if system else []) + [_user_message(text, images)]
+    messages = ([{"role": "system", "content": system}] if system else []) + [user_message(text, images)]
     extra = _think_extra(app, m, think)
     if as_json:
         out.print_json(json.dumps(app.client.chat(m.id, messages, **extra)))
@@ -339,11 +327,6 @@ def _split_files(m: Model, files, text: str) -> tuple[list[Path], str]:
     return images, text
 
 
-CHAT_HELP = """[bold]/model NAME[/] switch model   [bold]/image PATH[/] attach image to next message
-[bold]/think on|off[/] reasoning     [bold]/system TEXT[/] set system prompt
-[bold]/clear[/] forget history      [bold]/name NAME[/] name this session   [bold]/exit[/]"""
-
-
 @cli.command()
 @click.option("-m", "--model", help="Chat model.")
 @click.option("-s", "--system", help="System prompt.")
@@ -358,87 +341,36 @@ def chat(app: App, model, system, resume, cont, name, think):
         import readline  # noqa: F401  (line editing + history for input())
     except ImportError:
         pass
-    store = app.store
-    row = store.find_session(resume) if resume else (store.last_session() if cont else None)
-    if (resume or cont) and not row:
-        raise click.UsageError("No such session.")
-    messages: list[dict] = []
-    if row:
-        sid = row["id"]
-        m = app.model_for("chat", model or row["model"])
-        system = system or row["system"]
-        for msg in store.messages(sid):
-            messages.append({"role": msg["role"], "content": msg["content"]})
-        err.print(f"[dim]Resumed session {sid}{' ' + row['name'] if row['name'] else ''} "
-                  f"({len(messages)} messages)[/]")
+    if resume or cont:
+        state = _resume_session(app, resume, model, system)
     else:
-        m = app.model_for("chat", model)
-        sid = store.create_session(m.id, name=name, system=system)
-    app.ensure_loaded(m)
-    pending_images: list[Path] = []
-    err.print(f"[bold]{m.name}[/] [dim]session {sid} — /help for commands, Ctrl-D to exit[/]")
-    prompt = "\001\033[1;36m\002› \001\033[0m\002" if sys.stdin.isatty() else "› "
-    while True:
-        try:
-            line = input(prompt)
-        except EOFError:
-            err.print()
-            break
-        if not line.strip():
-            continue
-        if line.startswith("/"):
-            cmd, _, arg = line[1:].partition(" ")
-            arg = arg.strip()
-            if cmd in ("exit", "quit", "q"):
-                break
-            elif cmd == "help":
-                err.print(CHAT_HELP)
-            elif cmd == "clear":
-                messages.clear()
-                store.clear_messages(sid)
-                err.print("[dim]history cleared[/]")
-            elif cmd == "model":
-                try:
-                    m = app.model_for("chat", arg or None)
-                    app.ensure_loaded(m)
-                    store.update_session(sid, model=m.id)
-                    err.print(f"[dim]now using {m.name}[/]")
-                except (ResolveError, TiinyError) as e:
-                    err.print(f"[red]{e}[/]")
-            elif cmd == "image":
-                p = Path(arg).expanduser()
-                if not p.exists():
-                    err.print(f"[red]no such file: {p}[/]")
-                elif not m.vision:
-                    err.print(f"[red]{m.name} can't see images; /model a vision model first[/]")
-                else:
-                    pending_images.append(p)
-                    err.print(f"[dim]attached {p.name}[/]")
-            elif cmd == "think":
-                think = arg != "off"
-                err.print(f"[dim]thinking {'on' if think else 'off'}[/]")
-            elif cmd == "system":
-                system = arg or None
-                store.update_session(sid, system=system)
-            elif cmd == "name":
-                store.update_session(sid, name=arg or None)
-            else:
-                err.print(f"[red]unknown command /{cmd}[/]")
-            continue
-        user = _user_message(line, pending_images)
-        convo = ([{"role": "system", "content": system}] if system else []) + messages + [user]
-        try:
-            reply = _stream_reply(app, m, convo, _think_extra(app, m, think), show_thinking=True)
-        except KeyboardInterrupt:
-            err.print("[dim]…interrupted[/]")
-            continue
-        except TiinyError as e:
-            err.print(f"[red]{e}[/]")
-            continue
-        messages += [user, {"role": "assistant", "content": reply}]
-        store.add_message(sid, "user", line, [str(p) for p in pending_images] or None)
-        store.add_message(sid, "assistant", reply)
-        pending_images = []
+        state = _new_session(app, model, system, name)
+    state.think = think
+    app.ensure_loaded(state.model)
+    err.print(f"[bold]{state.model.name}[/] [dim]session {state.sid} — /help for commands, Ctrl-D to exit[/]")
+
+    def reply(m: Model, convo: list[dict], think: bool | None) -> str:
+        return _stream_reply(app, m, convo, _think_extra(app, m, think), show_thinking=True)
+
+    ChatSession(app, state, err, reply).run()
+
+
+def _new_session(app: App, model: str | None, system: str | None, name: str | None) -> SessionState:
+    m = app.model_for("chat", model)
+    return SessionState(app.store.create_session(m.id, name=name, system=system), m, system)
+
+
+def _resume_session(app: App, ref: str | None, model: str | None, system: str | None) -> SessionState:
+    """Resume session ``ref`` (id or name), or the most recent one when ref is None."""
+    store = app.store
+    row = store.find_session(ref) if ref else store.last_session()
+    if not row:
+        raise click.UsageError("No such session.")
+    messages = [{"role": r["role"], "content": r["content"]} for r in store.messages(row["id"])]
+    label = f" {row['name']}" if row["name"] else ""
+    err.print(f"[dim]Resumed session {row['id']}{label} ({len(messages)} messages)[/]")
+    return SessionState(row["id"], app.model_for("chat", model or row["model"]),
+                        system or row["system"], messages=messages)
 
 
 @cli.group(invoke_without_command=True)
