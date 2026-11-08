@@ -35,6 +35,7 @@ err = Console(stderr=True)
 SETTING_KEYS = {
     "default.chat", "default.agent", "default.image", "default.tts", "default.asr", "default.embed", "default.3d",
     "think",  # on|off — default thinking mode for models that can toggle it
+    "show_thinking",  # on|off — print reasoning in `tai chat` (off: a "thinking…" spinner; `/think show|hide`)
     "tts.instruct",  # default voice-design instruct, e.g. "female, british accent"
 }
 
@@ -215,8 +216,8 @@ def config_set(app: App, key, value):
         value = app.agent_model(value).id
     elif key.startswith("default."):
         value = resolve(app.catalog(), value, task=key.split(".", 1)[1]).id
-    elif key == "think" and value not in ("on", "off"):
-        raise click.BadParameter("think must be on or off")
+    elif key in ("think", "show_thinking") and value not in ("on", "off"):
+        raise click.BadParameter(f"{key} must be on or off")
     app.store.set_setting(key, value)
     out.print(f"{key} = {value}")
 
@@ -249,24 +250,43 @@ def _think_extra(app: App, model: Model, think: bool | None) -> dict:
     return {"chat_template_kwargs": {"enable_thinking": think}}
 
 
+class _ThinkingView:
+    """Reasoning on stderr until the answer starts: printed dim, or (hidden) a spinner."""
+
+    def __init__(self, show: bool) -> None:
+        self.show, self.active, self.spinner = show, False, None
+
+    def reasoning(self, text: str) -> None:
+        if self.show:
+            err.print(text, style="dim italic", end="", soft_wrap=True, highlight=False)
+        elif self.spinner is None:
+            self.spinner = err.status("[dim]thinking…[/]")
+            self.spinner.start()
+        self.active = True
+
+    def end(self) -> None:
+        if self.spinner is not None:
+            self.spinner.stop()
+            self.spinner = None
+        elif self.active:
+            err.print()
+        self.active = False
+
+
 def _stream_reply(app: App, req: ChatRequest, show_thinking: bool) -> str:
-    text, in_think = [], False
-    for chunk in app.client.chat_stream(req.model.id, req.messages, **req.extra):
-        if not chunk.get("choices"):
-            continue
-        delta = chunk["choices"][0].get("delta") or {}
-        r = delta.get("reasoning_content")
-        if r and show_thinking:
-            err.print(r, style="dim italic", end="", soft_wrap=True, highlight=False)
-            in_think = True
-        c = delta.get("content")
-        if c:
-            if in_think:
-                err.print()
-                in_think = False
-            text.append(c)
-            sys.stdout.write(c)
-            sys.stdout.flush()
+    text, view = [], _ThinkingView(show_thinking)
+    try:
+        for chunk in app.client.chat_stream(req.model.id, req.messages, **req.extra):
+            delta = (chunk.get("choices") or [{}])[0].get("delta") or {}
+            if delta.get("reasoning_content"):
+                view.reasoning(delta["reasoning_content"])
+            if delta.get("content"):
+                view.end()
+                text.append(delta["content"])
+                sys.stdout.write(delta["content"])
+                sys.stdout.flush()
+    finally:
+        view.end()
     sys.stdout.write("\n")
     return "".join(text)
 
@@ -335,11 +355,12 @@ def chat(app: App, opts: ChatOptions, session: SessionRef):
         pass
     state = _resume_session(app, session.resume, opts) if session.resuming else _new_session(app, opts, session.name)
     state.think = opts.think
+    state.show_thinking = app.store.get_setting("show_thinking") != "off"
     app.ensure_loaded(state.model)
     err.print(f"[bold]{state.model.name}[/] [dim]session {state.sid} — /help for commands, Ctrl-D to exit[/]")
 
     def reply(m: Model, convo: list[dict], think: bool | None) -> str:
-        return _stream_reply(app, _chat_request(app, m, convo, think), show_thinking=True)
+        return _stream_reply(app, _chat_request(app, m, convo, think), show_thinking=state.show_thinking)
 
     ChatSession(app, state, err, reply).run()
 

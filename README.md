@@ -34,6 +34,7 @@ tai ask -f photo.jpg "what's in this picture?"   # vision model (Qwen3.6)
 tai ask --think --show-thinking "hard puzzle…"   # toggle reasoning
 
 tai chat                    # interactive; /help inside for commands
+                            # /think hide shows a spinner instead of the reasoning text
 tai chat -c                 # continue the last session
 tai history                 # list sessions; `tai history show 3`, `tai history rm 3`
 
@@ -54,6 +55,7 @@ tai status                  # NPU usage
 tai load qwen3.6            # pre-load; tai unload --all
 tai config set default.chat coder              # preferred model per task
 tai config set think off                       # default reasoning mode
+tai config set show_thinking off               # tai chat: hide the reasoning text by default
 ```
 
 Models can be named by full id, display name, or any unique part of either (`coder`, `z-image`, `omni`).

@@ -95,6 +95,16 @@ def test_ask_show_thinking_goes_to_stderr(fake):
     assert "hmm" in r.stderr and "hmm" not in r.stdout
 
 
+def test_chat_shows_thinking_unless_turned_off(fake):
+    r = CliRunner().invoke(cli_mod.cli, ["chat", "-m", "vision"], input="hi\n")
+    assert "hmm" in r.stderr
+    r = CliRunner().invoke(cli_mod.cli, ["chat", "-m", "vision"], input="/think hide\nhi\n")
+    assert "hmm" not in r.stderr and "answer" in r.stdout
+    run("config", "set", "show_thinking", "off")
+    r = CliRunner().invoke(cli_mod.cli, ["chat", "-m", "vision"], input="hi\n")
+    assert "hmm" not in r.stderr
+
+
 def test_ask_nothing_to_ask(fake):
     r = CliRunner().invoke(cli_mod.cli, ["ask"], input="")
     assert r.exit_code == 2 and "Nothing to ask" in r.output

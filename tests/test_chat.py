@@ -67,6 +67,16 @@ def test_think_toggle_is_passed_to_reply(session):
     assert session.calls[0][2] is False
 
 
+def test_show_thinking_toggles_display_only(session):
+    assert session.state.show_thinking is True
+    session.handle("/think hide")
+    assert session.state.show_thinking is False
+    session.handle("/think show")
+    assert session.state.show_thinking is True
+    session.handle("hi")
+    assert session.calls[0][2] is None  # the model's thinking mode is untouched
+
+
 def test_clear_forgets_history(session):
     session.handle("hi")
     session.handle("/clear")

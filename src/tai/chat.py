@@ -17,7 +17,8 @@ if TYPE_CHECKING:
     from rich.console import Console
 
 CHAT_HELP = """[bold]/model NAME[/] switch model   [bold]/image PATH[/] attach image to next message
-[bold]/think on|off[/] reasoning     [bold]/system TEXT[/] set system prompt
+[bold]/think on|off[/] reasoning     [bold]/think show|hide[/] print it or just a spinner
+[bold]/system TEXT[/] set system prompt
 [bold]/clear[/] forget history      [bold]/name NAME[/] name this session   [bold]/exit[/]"""
 
 EXIT = object()  # returned by a handler to end the loop
@@ -41,6 +42,7 @@ class SessionState:
     model: Model
     system: str | None = None
     think: bool | None = None
+    show_thinking: bool = True  # print reasoning (False: a spinner); display only, the model still thinks
     messages: list[dict] = field(default_factory=list)
     pending_images: list[Path] = field(default_factory=list)
 
@@ -137,6 +139,12 @@ class ChatSession:
             self.err.print(f"[dim]attached {path.name}[/]")
 
     def cmd_think(self, arg: str) -> None:
+        """on|off: the model's reasoning. show|hide: print it, or only a spinner
+        (`tai config set show_thinking off` sets the default)."""
+        if arg in ("show", "hide"):
+            self.state.show_thinking = arg == "show"
+            self.err.print(f"[dim]thinking {'shown' if self.state.show_thinking else 'hidden (spinner)'}[/]")
+            return
         self.state.think = arg != "off"
         self.err.print(f"[dim]thinking {'on' if self.state.think else 'off'}[/]")
 
