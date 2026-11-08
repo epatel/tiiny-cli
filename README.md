@@ -64,6 +64,8 @@ Models can be named by full id, display name, or any unique part of either (`cod
 
 ## Remote use: `tai serve`
 
+<img src="tai-serve.png" width="600" alt="Laptop → cloud → server running tai serve → Tiiny">
+
 One machine near the Tiiny runs the server; other machines use `tai` as usual through it.
 
 ```sh
