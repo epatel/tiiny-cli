@@ -22,7 +22,7 @@ from rich.table import Table
 from tai import __version__
 from tai.chat import ChatSession, SessionState, user_message
 from tai.client import TiinyClient, TiinyError
-from tai.config import ConfigError, data_dir, load_settings
+from tai.config import ConfigError, Env, Settings, data_dir, load_settings
 from tai.db import Store
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
@@ -41,8 +41,8 @@ SETTING_KEYS = {
 
 
 class App:
-    def __init__(self, device: str | None, yes: bool):
-        self._device = device
+    def __init__(self, device: str | None, yes: bool, url: str | None = None):
+        self._device, self._url = device, url
         self.yes = yes
         self._client: TiinyClient | None = None
         self._store: Store | None = None
@@ -50,8 +50,12 @@ class App:
     @property
     def client(self) -> TiinyClient:
         if self._client is None:
-            self._client = TiinyClient(load_settings(device=self._device))
+            self._client = TiinyClient(load_settings(device=self._device, url=self._url))
         return self._client
+
+    def device_settings(self) -> Settings:
+        """The device itself (for `tai serve`), ignoring TAI_URL."""
+        return load_settings(device=self._device, direct=True)
 
     @property
     def store(self) -> Store:
@@ -129,13 +133,16 @@ class TaiGroup(click.Group):
 
 @click.group(cls=TaiGroup)
 @click.option("--device", envvar="TAI_DEVICE", help="Device address (default: from tiiny config).")
+@click.option("--url", help="Use a `tai serve` at this URL instead of the device (or set TAI_URL; key: TAI_API_KEY).")
 @click.option("-y", "--yes", is_flag=True, envvar="TAI_YES", help="Don't ask before unloading models.")
 @click.version_option(__version__, prog_name="tai")
 @click.pass_context
-def cli(ctx, device, yes):
+def cli(ctx, device, url, yes):
     """Use every model on your Tiiny device. Models are loaded on demand;
-    when the NPU is full you'll be asked which models to unload."""
-    ctx.obj = App(device, yes)
+    when the NPU is full you'll be asked which models to unload.
+
+    Talks to the device directly, or through `tai serve` when --url / TAI_URL is set."""
+    ctx.obj = App(device, yes, url)
 
 
 def main():
@@ -171,6 +178,7 @@ def models_cmd(app: App, as_json):
 def status(app: App):
     """Show NPU usage and loaded models."""
     npu = app.client.npu()
+    err.print(f"[dim]{app.client.settings.where}[/]")
     out.print(f"NPU: {npu.get('npu_used')}/{npu.get('npu_total')} used, {npu.get('npu_available')} free")
     for m in npu.get("models", []):
         out.print(f"  [green]●[/] {m['model_id']}  {m['npu_usage']}%  [dim]{m['status']}[/]")
@@ -416,6 +424,32 @@ def agent(app: App, req: AgentRequest):
     from tai.agent.command import run_agent  # textual loads only for this command
 
     run_agent(app, req)
+
+
+@cli.command()
+@click.option("--port", type=int, help="Port on 127.0.0.1 (or TAI_SERVE_PORT; default 8765).")
+@click.option("--new-key", is_flag=True, help="Print a fresh random API key and exit.")
+@pass_app
+def serve(app: App, port, new_key):
+    """Let other machines use the device through this one.
+
+    Listens on 127.0.0.1; nginx gives it its external URL (e.g. https://host/tai).
+    Checks `Authorization: Bearer <TAI_API_KEY>` and forwards the device routes tai
+    uses. Clients set TAI_URL to the external URL and the same TAI_API_KEY. This
+    machine needs the usual device settings; TAI_URL is ignored here."""
+    import secrets
+
+    from tai import serve as server
+    from tai.config import api_key
+
+    if new_key:
+        click.echo(secrets.token_urlsafe(32))
+        return
+    port = port or Env().first("TAI_SERVE_PORT") or 8765
+    if not str(port).isdigit():
+        raise click.BadParameter(f"must be a number, not {port!r}", param_hint="TAI_SERVE_PORT")
+    cfg = server.ServeConfig(app.device_settings(), api_key())
+    server.run(cfg, int(port), log=lambda line: err.print(line, highlight=False, markup=False))
 
 
 @cli.command("mcp")

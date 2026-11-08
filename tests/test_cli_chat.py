@@ -43,7 +43,7 @@ class FakeClient:
 def fake(monkeypatch, tmp_path):
     client = FakeClient()
     monkeypatch.setattr(cli_mod, "TiinyClient", lambda settings: client)
-    monkeypatch.setattr(cli_mod, "load_settings", lambda device=None: Settings("dev", "tok"))
+    monkeypatch.setattr(cli_mod, "load_settings", lambda **kw: Settings("dev", "tok"))
     monkeypatch.setenv("TAI_HOME", str(tmp_path / "home"))
     return client
 

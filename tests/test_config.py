@@ -7,7 +7,7 @@ from tai.config import load_settings
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    for k in ("TAI_DEVICE", "TAI_TOKEN", "TIINY_API_KEY"):
+    for k in ("TAI_DEVICE", "TAI_TOKEN", "TIINY_API_KEY", "TAI_URL", "TAI_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     cfg = tmp_path / "tiiny.json"
     cfg.write_text(json.dumps({"deviceAddress": "10.0.0.2", "account": {"authKey": "from-cfg"}}))
@@ -37,3 +37,21 @@ def test_real_env_beats_dotenv(env, monkeypatch):
     assert load_settings().token == "from-env"
     monkeypatch.setenv("TAI_TOKEN", "tai-token")
     assert load_settings().token == "tai-token"
+
+
+def test_tai_url_switches_to_client_mode_with_the_api_key(env):
+    (env / ".env").write_text("TAI_URL=https://host/tai/\nTAI_API_KEY=k\n")
+    s = load_settings()
+    assert (s.base_url, s.token, s.via_server, s.where) == ("https://host/tai", "k", True, "via https://host/tai")
+    assert load_settings(direct=True).device == "10.0.0.2"  # tai serve ignores TAI_URL
+
+
+def test_client_mode_needs_a_key_and_a_scheme(env, monkeypatch):
+    from tai.config import ConfigError
+
+    monkeypatch.setenv("TAI_URL", "https://host/tai")
+    with pytest.raises(ConfigError, match="TAI_API_KEY"):
+        load_settings()
+    monkeypatch.setenv("TAI_API_KEY", "k")
+    with pytest.raises(ConfigError, match="scheme"):
+        load_settings(url="host/tai")

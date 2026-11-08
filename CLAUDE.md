@@ -38,6 +38,7 @@ Enforced by hooks (`.claude/settings.json`): `pip install` outside `.venv/bin/` 
 - [device-api](cards/device-api.md) — calling or debugging any device endpoint, adding a new model type/task, or an HTTP error from the device
 - [agent](cards/agent.md) — anything in `src/tai/agent/` (`tai agent`, `tai mcp`, `tai skills`): tools, the loop, permissions, the TUI, `/tiiny` device commands, the browser viewer + image/show/ask tools, agent sessions, MCP servers, skills
 - [tiiny-api-notes](cards/tiiny-api-notes.md) — a device feature tai doesn't use yet (vault/kb, OCR, rerank, music, video, Jev classification, image editing), image seed/steps/sizes or TRELLIS stage params (from Tiiny Studio's code), odd device behaviour (502 after a restart, 504 after ~10 min, `xh2a backend fail`), or privacy of chats on the device
+- [serve](cards/serve.md) — `tai serve`, client mode (`--url`/`TAI_URL` + `TAI_API_KEY`), nginx prefix, forwarding/streaming/auth
 - [npu-swapping](cards/npu-swapping.md) — anything about loading/unloading models (`src/tai/loader.py`), NPU budget, "Cannot allocate memory", or which model is picked by default
 
 ### Decisions

@@ -62,6 +62,18 @@ tai config set show_thinking off               # tai chat: hide the reasoning te
 
 Models can be named by full id, display name, or any unique part of either (`coder`, `z-image`, `omni`).
 
+## Remote use: `tai serve`
+
+One machine near the Tiiny runs the server; other machines use `tai` as usual through it.
+
+```sh
+tai serve --new-key                          # once: make a key
+TAI_API_KEY=… tai serve --port 8798          # on the server (or TAI_SERVE_PORT; default 8765)
+TAI_URL=https://host/tai TAI_API_KEY=… tai chat    # anywhere else (or --url, or a .env file)
+```
+
+The server forwards the device API after checking the key, and never shares the device key. It listens on 127.0.0.1. Point nginx at it, e.g. `location /tai/ { proxy_pass http://127.0.0.1:8798; }`; the server ignores the `/tai` prefix by itself. Turn off buffering and raise timeouts for streaming and long jobs. See `cards/serve.md` for the snippet. Sessions and settings stay on each client.
+
 ## Development
 
 ```sh
