@@ -36,6 +36,8 @@ Model ids contain a slash (`Qwen/Qwen3-Coder-Next`), and the slash goes straight
 
 ### 3D pipeline details
 
+Implemented in `src/tai/mesh.py`: `Mesh3D.generate` runs the stages, `run` submits and polls one stage (retrying gateway 5xx), and `StageResult.ref` builds input references.
+
 - `POST /v1/3d/tasks` (form fields): `stage`, `image` (file), `params` (JSON string), `input_refs` (JSON string of `{input_name: {task_id, artifact_id}}`).
 - `GET /v1/3d/tasks/{id}` → `data.status` (`queued`/`running`/`completed`/`failed`), `progress`, `message`; when completed, `result.output.artifacts[]`, each with `artifact_id`, `artifact_type` and `filename`.
 - `GET /v1/3d/tasks/{id}/artifacts/{artifact_id}` downloads an artifact. `GET /v1/3d/capabilities` lists the stages and their params.

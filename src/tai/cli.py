@@ -9,6 +9,7 @@ import platform
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import click
@@ -21,6 +22,7 @@ from tai.chat import ChatSession, SessionState, user_message
 from tai.client import TiinyClient, TiinyError
 from tai.config import ConfigError, data_dir, load_settings
 from tai.db import Store
+from tai.mesh import Mesh3D, MeshOptions
 from tai.models import Model, ResolveError, build_catalog, plan_swap, resolve
 
 out = Console()
@@ -530,47 +532,14 @@ def three_d(app: App, image_path, model, output, faces, quality, seed):
     m = app.model_for("3d", model)
     app.ensure_loaded(m)
     output = output or image_path.with_suffix(".glb")
-    c = app.client
-    controls = {k: v for k, v in {"inference_quality": quality, "seed": seed}.items() if v is not None}
-
-    def ref(task_id: str, artifact: dict) -> dict:
-        return {"task_id": task_id, "artifact_id": artifact["artifact_id"]}
-
-    def run(stage: str, **kw) -> tuple[str, list[dict]]:
-        task_id = c.task3d_submit(stage, **kw)
-        with Progress(TextColumn(f"[bold]{stage:<9}"), BarColumn(), TextColumn("{task.percentage:>3.0f}%"),
-                      TextColumn("[dim]{task.fields[msg]}"), TimeElapsedColumn(), console=err) as prog:
-            tid = prog.add_task(stage, total=100, msg="")
-            while True:
-                try:
-                    t = c.task3d(task_id)
-                except TiinyError as e:  # gateway 504s while the device is busy
-                    if "HTTP 5" not in str(e):
-                        raise
-                    time.sleep(5)
-                    continue
-                prog.update(tid, completed=t.get("progress") or 0, msg=(t.get("message") or "")[:45])
-                if t["status"] == "completed":
-                    break
-                if t["status"] in ("failed", "cancelled", "error"):
-                    raise TiinyError(f"3D {stage} {t['status']}: {t.get('error')}")
-                time.sleep(3)
-        return task_id, t["result"]["output"]["artifacts"]
-
-    def pick(arts: list[dict], kind: str) -> dict:
-        return next(a for a in arts if a["artifact_type"] == kind)
-
-    shape_t, arts = run("shape", image=image_path, params=controls or None)
-    shape = ref(shape_t, pick(arts, "shape"))
-    tex_t, arts = run("texture", input_refs={"shape_artifact": shape}, params=controls or None)
-    refs = {"shape_artifact": shape, "material_artifact": ref(tex_t, pick(arts, "material"))}
-    if faces:
-        simp_t, arts = run("simplify", input_refs={"shape_artifact": shape},
-                           params={"simplify": True, "target_faces": faces})
-        geo = next((a for a in arts if a["artifact_type"].startswith("geometry")), None)
-        if geo:
-            refs["geometry_artifact"] = ref(simp_t, geo)
-    exp_t, arts = run("export", input_refs=refs, params={"output_name": output.name})
-    glb = next(a for a in arts if a["filename"].endswith(".glb"))
-    output.write_bytes(c.task3d_artifact(exp_t, glb["artifact_id"]))
+    pipeline = Mesh3D(app.client, _stage_progress)
+    output.write_bytes(pipeline.generate(image_path, output.name, MeshOptions(faces, quality, seed)))
     click.echo(f"Saved {output} ({output.stat().st_size / 1e6:.1f} MB)")
+
+
+@contextmanager
+def _stage_progress(stage: str):
+    with Progress(TextColumn(f"[bold]{stage:<9}"), BarColumn(), TextColumn("{task.percentage:>3.0f}%"),
+                  TextColumn("[dim]{task.fields[msg]}"), TimeElapsedColumn(), console=err) as prog:
+        tid = prog.add_task(stage, total=100, msg="")
+        yield lambda pct, msg: prog.update(tid, completed=pct, msg=msg[:45])
