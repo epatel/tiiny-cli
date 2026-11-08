@@ -23,8 +23,7 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
 - 2026-11-08 — Chat history is persisted text-only. Images attached in a past turn are not re-sent on resume.
 
 ## Current state / handoff
-All seven installed models were exercised live through `tai`: chat (Qwen3-Coder-Next, Qwen3.6 incl. vision and thinking toggle), Z-Image-Turbo, OmniVoice (incl. `instruct`), Qwen3-ASR, Qwen3-Embedding and TRELLIS 3D (shape→texture→export). 20 unit tests pass. After testing, the device state was left as is (the user said not to reload the coder model).
+All seven installed models were exercised live through `tai`: chat (Qwen3-Coder-Next, Qwen3.6 incl. vision and thinking toggle), Z-Image-Turbo, OmniVoice (incl. `instruct`), Qwen3-ASR, Qwen3-Embedding and TRELLIS 3D (shape→texture→export, and `tai 3d --faces 200000` → 16 MB GLB in ~7 min). 20 unit tests pass. After testing, the device state was left as is (the user said not to reload the coder model).
 
 ## Open questions
-- Does the 3D `simplify` stage's output artifact type really start with `geometry`? `tai 3d --faces` assumes so. Verify against a live run.
 - Do the TRELLIS controls (`seed`, `inference_quality`) belong in `params` at submit time? `tai 3d --quality/--seed` sends them there; this is untested.

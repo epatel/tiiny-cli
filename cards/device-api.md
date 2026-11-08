@@ -40,7 +40,7 @@ Model ids contain a slash (`Qwen/Qwen3-Coder-Next`), and the slash goes straight
 - `GET /v1/3d/tasks/{id}` → `data.status` (`queued`/`running`/`completed`/`failed`), `progress`, `message`; when completed, `result.output.artifacts[]`, each with `artifact_id`, `artifact_type` and `filename`.
 - `GET /v1/3d/tasks/{id}/artifacts/{artifact_id}` downloads an artifact. `GET /v1/3d/capabilities` lists the stages and their params.
 - Inputs per stage: shape takes `image`; texture and simplify take `shape_artifact`; export takes `shape_artifact` + `material_artifact` (texture's output), optionally `geometry_artifact` (simplify's output), and returns `mesh_glb`.
-- Rough timings: shape ≈ 4 min, texture ≈ 2 min, export ≈ 8 min. An unsimplified GLB is about 120 MB.
+- Rough timings: shape ≈ 4 min, texture ≈ 2 min, export ≈ 8 min. An unsimplified GLB is about 120 MB. With simplify (`target_faces: 200000`, ≈ 25 s) export drops to ≈ 25 s and the GLB to about 16 MB. Simplify outputs an artifact of type `geometry…`.
 
 ## Rediscovering the API
 
