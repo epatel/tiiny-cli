@@ -17,9 +17,8 @@ The device only runs *loaded* models, and they share an NPU budget. `tai` loads 
 ## Install
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -e .
-ln -s "$PWD/.venv/bin/tai" ~/.local/bin/tai   # optional: put it on PATH
+make setup   # creates .venv and installs tai into it
+make link    # optional: symlink tai into ~/.local/bin (PREFIX=... to change)
 ```
 
 `tai` reads the device address and auth key from the official `tiiny` CLI's config (`~/.local/tiiny/config.json`), so run `tiiny connect <ip>` and `tiiny login` once. To override, set `TAI_DEVICE`, or set the token with `TIINY_API_KEY` or `TAI_TOKEN`. Put them in the environment or in a `.env` file in the current directory; real environment variables win.
@@ -53,8 +52,9 @@ Models can be named by full id, display name, or any unique part of either (`cod
 ## Development
 
 ```sh
-.venv/bin/pip install -e '.[dev]'
-.venv/bin/pytest -q
+make test    # unit tests (mocked, no device needed)
+make check   # tests + code-health delta; run before committing
+make help    # all targets
 ```
 
 See `CLAUDE.md` and `cards/` for how the device API works and how swapping is decided.

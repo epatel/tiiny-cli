@@ -16,16 +16,19 @@ These are standard and used the standard way. There are no cards for them: read 
 
 ## Commands
 
-- Setup: `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'`
+`make help` lists the targets:
+- Setup: `make setup` (creates `.venv`, installs with dev extras)
 - Run: `.venv/bin/tai --help` (e.g. `.venv/bin/tai models`, `.venv/bin/tai ask "hi"`)
-- Test: `.venv/bin/pytest -q` (one test: `.venv/bin/pytest tests/test_models.py::test_swap_unloads_least_recently_used_first`)
+- Test: `make test` (one test: `.venv/bin/pytest tests/test_models.py::test_swap_unloads_the_least_npu_that_makes_room`)
+- Before committing: `make check` (tests + `aihealth delta`). `make scan` gives a project health overview
+- Put `tai` on PATH: `make link` (symlink in `~/.local/bin`); `make clean` removes caches
 - Live runs against the device: set `TAI_HOME=<scratch dir>` so test sessions stay out of the user's history. Note that a live run may unload the user's models.
 
 Enforced by hooks (`.claude/settings.json`): `pip install` outside `.venv/bin/` is blocked, so use `.venv/bin/pip`. Finishing with uncommitted changes in `src/` or `tests/` runs the unit tests and blocks on failure. Reading `.env` is denied.
 
 ## Code health
 - aihealth is pinned in the `dev` extras (`.venv/bin/pip install -e '.[dev]'` installs it). Hooks and the `aihealth` MCP server (`.mcp.json`) use `.venv/bin/aihealth` and do nothing if it isn't installed.
-- Before committing, run `.venv/bin/aihealth delta` and fix new or worsened smells it reports in code you touched (exit code 1 = health degraded).
+- Before committing, run `make health` (`.venv/bin/aihealth delta`) and fix new or worsened smells it reports in code you touched (exit code 1 = health degraded).
 - `.venv/bin/aihealth scan .` gives an overview of the codebase.
 
 ## Cards
