@@ -56,10 +56,12 @@ class AskOutput:
 
 @dataclass(frozen=True)
 class SessionRef:
-    """Which chat session to use: resume by id/name, continue the latest, or a new named one."""
+    """Which chat session to use: resume by id/name, continue the latest, or a new named one.
+    ``no_save``: a new session kept only in memory, never written to the history."""
     resume: str | None = None
     cont: bool = False
     name: str | None = None
+    no_save: bool = False
 
     @property
     def resuming(self) -> bool:
@@ -74,6 +76,7 @@ class AgentRequest:
     resume: str | None = None
     cont: bool = False
     no_mcp: bool = False
+    no_save: bool = False
 
     @property
     def text(self) -> str | None:
@@ -81,7 +84,7 @@ class AgentRequest:
 
     @property
     def session(self) -> SessionRef:
-        return SessionRef(resume=self.resume, cont=self.cont)
+        return SessionRef(resume=self.resume, cont=self.cont, no_save=self.no_save)
 
 
 @dataclass(frozen=True)

@@ -86,3 +86,25 @@ def test_prompt_history_is_per_folder_oldest_first_and_capped(tmp_path, monkeypa
     assert s.prompts(other) == ["x"]
     monkeypatch.setattr(db, "PROMPT_HISTORY_LIMIT", 2)
     assert s.prompts(proj) == ["b", "c"]
+
+
+def test_private_copy_has_the_settings_but_writes_nothing_to_disk(tmp_path):
+    s = Store(tmp_path / "t.db")
+    s.set_setting("think", "off")
+    p = s.private_copy()
+    assert p.get_setting("think") == "off"
+    p.add_message(p.create_session("m"), "user", "secret")
+    p.add_prompt(Path("/proj"), "secret")
+    assert s.sessions() == [] and s.prompts(Path("/proj")) == []
+
+
+def test_clear_history_removes_sessions_messages_and_prompts_but_keeps_settings(tmp_path):
+    s = Store(tmp_path / "t.db")
+    s.set_setting("think", "off")
+    s.add_message(s.create_session("m"), "user", "hi")
+    s.create_agent_session("m", "/proj")
+    s.add_prompt(Path("/proj"), "do it")
+    assert s.clear_history() == 2
+    assert s.sessions() == [] and s.prompts(Path("/proj")) == []
+    assert s.conn.execute("SELECT COUNT(*) FROM message").fetchone()[0] == 0
+    assert s.get_setting("think") == "off"

@@ -78,6 +78,23 @@ class Store:
         self.conn.execute("PRAGMA foreign_keys = ON")
         migrate(self.conn)
 
+    def private_copy(self) -> Store:
+        """An in-memory store with this one's settings, for a run that must leave no history."""
+        copy = Store(":memory:")
+        with copy.conn:
+            copy.conn.executemany("INSERT INTO setting(key, value) VALUES (?, ?)", self.settings().items())
+        return copy
+
+    def clear_history(self) -> int:
+        """Delete every session (chat and agent) with its messages, and the agent prompt
+        history. Returns how many sessions were deleted."""
+        with self.conn:
+            n = self.conn.execute("DELETE FROM session").rowcount
+            self.conn.execute("DELETE FROM message")  # cascades already; also catches orphans
+            self.conn.execute("DELETE FROM prompt_history")
+        self.conn.execute("VACUUM")  # don't leave the deleted text in free pages
+        return n
+
     # -- settings --------------------------------------------------------
     def get_setting(self, key: str) -> str | None:
         row = self.conn.execute("SELECT value FROM setting WHERE key = ?", (key,)).fetchone()

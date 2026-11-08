@@ -59,6 +59,16 @@ class App:
             self._store = Store(data_dir() / "tai.db")
         return self._store
 
+    def unsaved(self, session: SessionRef) -> None:
+        """--no-save: from here on, use an in-memory copy of the store (settings only),
+        so this session never reaches the history on disk."""
+        if not session.no_save:
+            return
+        if session.resuming:
+            raise click.UsageError("--no-save starts a new session; it can't resume a saved one.")
+        self._store = self.store.private_copy()
+        err.print("[dim]Not saved to tai's history. The Tiiny itself still records chats in its vault.[/]")
+
     def catalog(self) -> list[Model]:
         return build_catalog(self.client.models(), self.client.running())
 
@@ -345,7 +355,8 @@ def _split_files(m: Model, files, text: str) -> tuple[list[Path], str]:
 @click.option("-r", "--resume", help="Resume a session by id or name.")
 @click.option("-c", "--continue", "cont", is_flag=True, help="Resume the most recent session.")
 @click.option("-n", "--name", help="Name for a new session.")
-@bundle("session", SessionRef, "resume", "cont", "name")
+@click.option("--no-save", is_flag=True, help="Don't save this session to the history.")
+@bundle("session", SessionRef, "resume", "cont", "name", "no_save")
 @pass_app
 def chat(app: App, opts: ChatOptions, session: SessionRef):
     """Interactive multi-turn chat. Sessions are saved; resume with -c or -r."""
@@ -353,6 +364,7 @@ def chat(app: App, opts: ChatOptions, session: SessionRef):
         import readline  # noqa: F401  (line editing + history for input())
     except ImportError:
         pass
+    app.unsaved(session)
     state = _resume_session(app, session.resume, opts) if session.resuming else _new_session(app, opts, session.name)
     state.think = opts.think
     state.show_thinking = app.store.get_setting("show_thinking") != "off"
@@ -392,7 +404,8 @@ def _resume_session(app: App, ref: str | None, opts: ChatOptions) -> SessionStat
 @click.option("-r", "--resume", help="Resume an agent session by id.")
 @click.option("-c", "--continue", "cont", is_flag=True, help="Continue the latest agent session in this folder.")
 @click.option("--no-mcp", is_flag=True, help="Don't connect to MCP servers.")
-@bundle("req", AgentRequest, "task", "model", "resume", "cont", "no_mcp")
+@click.option("--no-save", is_flag=True, help="Don't save this session (or its prompts) to the history.")
+@bundle("req", AgentRequest, "task", "model", "resume", "cont", "no_mcp", "no_save")
 @pass_app
 def agent(app: App, req: AgentRequest):
     """Coding agent in a full-screen UI: reads, edits and runs commands in this folder.
@@ -456,7 +469,10 @@ def skills_cmd():
 @cli.group(invoke_without_command=True)
 @click.pass_context
 def history(ctx):
-    """List saved chat sessions."""
+    """List saved chat and agent sessions. `tai history clear` deletes them all.
+
+    This is tai's own history. The Tiiny also records every chat in its vault
+    (per day, not readable through the API)."""
     if ctx.invoked_subcommand:
         return
     app: App = ctx.obj
@@ -493,6 +509,17 @@ def history_rm(app: App, session):
         raise click.UsageError("No such session.")
     app.store.delete_session(row["id"])
     out.print(f"Deleted session {row['id']}")
+
+
+@history.command("clear")
+@click.option("--yes", "confirmed", is_flag=True, help="Don't ask first.")
+@pass_app
+def history_clear(app: App, confirmed):
+    """Delete ALL saved sessions (chat and agent) and the agent's prompt history."""
+    if not confirmed and not click.confirm("Delete all saved sessions and prompt history?", err=True):
+        raise click.Abort()
+    n = app.store.clear_history()
+    out.print(f"Deleted {n} session{'s' * (n != 1)} and the prompt history")
 
 
 # ---------------------------------------------------------------- media

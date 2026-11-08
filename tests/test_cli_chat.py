@@ -105,6 +105,24 @@ def test_chat_shows_thinking_unless_turned_off(fake):
     assert "hmm" not in r.stderr
 
 
+def test_chat_no_save_leaves_no_session(fake):
+    run("config", "set", "think", "off")
+    r = CliRunner().invoke(cli_mod.cli, ["chat", "-m", "vision", "--no-save"], input="hi\n")
+    assert r.exit_code == 0 and "Not saved" in r.stderr
+    assert fake.requests[0]["chat_template_kwargs"] == {"enable_thinking": False}  # settings still apply
+    assert "hi" not in run("history").output
+    r = run("chat", "-c", "--no-save", input="")
+    assert r.exit_code == 2 and "can't resume" in r.output
+
+
+def test_history_clear_asks_then_deletes_everything(fake):
+    run("chat", "-m", "coder", input="first\n")
+    r = run("history", "clear", input="n\n")
+    assert r.exit_code == 1 and "first" in run("history").output
+    r = run("history", "clear", "--yes")
+    assert "Deleted 1 session " in r.output and "first" not in run("history").output
+
+
 def test_ask_nothing_to_ask(fake):
     r = CliRunner().invoke(cli_mod.cli, ["ask"], input="")
     assert r.exit_code == 2 and "Nothing to ask" in r.output

@@ -105,6 +105,7 @@ def _title(s: AgentSession, ext: Extensions) -> str:
 
 def run_agent(app, req: AgentRequest) -> None:
     root = Path.cwd().resolve()
+    app.unsaved(req.session)
     s = open_session(app, req.session, req.model, root)
     app.ensure_loaded(s.model)
     ext = load_extensions(root, use_mcp=not req.no_mcp)

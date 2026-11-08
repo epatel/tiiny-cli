@@ -36,7 +36,9 @@ tai ask --think --show-thinking "hard puzzle…"   # toggle reasoning
 tai chat                    # interactive; /help inside for commands
                             # /think hide shows a spinner instead of the reasoning text
 tai chat -c                 # continue the last session
+tai chat --no-save          # don't keep this session (also tai agent --no-save)
 tai history                 # list sessions; `tai history show 3`, `tai history rm 3`
+tai history clear           # delete all sessions and the agent's prompt history
 
 tai image "a fox in the snow, watercolor" -o fox.png --size 1024x1024 --open
 tai tts "Hello there" -i "female, british accent" --play
