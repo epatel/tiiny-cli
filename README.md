@@ -77,6 +77,16 @@ nests, and values are JSON when they parse (`temperature=0.2`, `stop='["\n"]'`),
 `supported_languages`). tai doesn't check the fields; the device decides, and some (like
 an unknown language) it accepts silently.
 
+```bash
+tai tts "Hej, hur mår du?" -x language=sv -i "female, low pitch"    # Swedish voice
+tai ask -x max_tokens=50 "Summarise this" < notes.txt                 # cap the answer length
+tai ask -x 'stop=["\n\n"]' "One paragraph about otters"               # stop at a blank line
+tai ask -x response_format.type=json_object "Name and age of a fictional person, as JSON"
+tai embed -x dimensions=256 "hello"                                   # 256 numbers instead of 1024
+```
+
+All five were checked on the device (Qwen3.6, OmniVoice, Qwen3-Embedding).
+
 ## Remote use: `tai serve`
 
 <img src="tai-serve.png" width="600" alt="Laptop → cloud → server running tai serve → Tiiny">
