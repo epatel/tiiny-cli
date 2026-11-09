@@ -5,6 +5,7 @@ import asyncio
 import json
 import socket
 import threading
+import time
 
 import pytest
 from aiohttp import web
@@ -97,6 +98,10 @@ def test_client_mode_forwards_with_the_device_key_under_a_prefix(stack):
     c = client(url + "/tai/")  # as if nginx passed its /tai prefix through unstripped
     assert c.models() == [{"id": "q/Coder"}]
     assert seen[0]["path"] == "/api/v1/models/" and seen[0]["auth"] == f"Bearer {DEVICE_KEY}"
+    # the handler logs after the response is written, so the client can be first
+    deadline = time.monotonic() + 2
+    while not any("/api/v1/models/ 200" in line for line in logs) and time.monotonic() < deadline:
+        time.sleep(0.01)
     assert any("/api/v1/models/ 200" in line for line in logs)
 
 
