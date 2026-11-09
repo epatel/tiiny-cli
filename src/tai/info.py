@@ -2,7 +2,8 @@
 
 Only some models describe their options, and only while loaded (checked on the device
 2026-11-09): chat and TTS answer `GET /v1/capabilities?model=`, 3D models answer
-`GET /v1/3d/capabilities`. Image, ASR and embedding models have no such endpoint
+`GET /v1/3d/capabilities`, video models `GET /v1/video/info?model=`. Image, ASR and
+embedding models have no such endpoint
 (the gateway answers "does not support tts"), so for them the catalog row is all there is.
 """
 
@@ -18,6 +19,7 @@ REPORTERS: dict[str, Callable[[TiinyClient, str], dict]] = {
     "chat": lambda c, model_id: c.capabilities(model_id),
     "tts": lambda c, model_id: c.capabilities(model_id),
     "3d": lambda c, model_id: c.task3d_capabilities(model_id),
+    "video": lambda c, model_id: c.video_info(model_id),
 }
 
 # keys that repeat the catalog row or say nothing useful

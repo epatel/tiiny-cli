@@ -28,8 +28,10 @@ from tai.info import catalog_row, render, reported, reports_options
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
 from tai.models import Model, ResolveError, build_catalog, resolve
-from tai.options import (AgentRequest, AskOutput, AsrOptions, ChatOptions, ImageOptions, Question,
-                         SessionRef, TtsConfig, bundle, chat_options, extra_option, merge)
+from tai.options import (AgentRequest, AskOutput, AsrOptions, ChatOptions, ImageOptions, Prompt,
+                         Question, SavedFile, SessionRef, TtsConfig, bundle, chat_options, extra_option,
+                         generator, merge)
+from tai.video import MAX_SECONDS, VideoJob, VideoOptions
 
 out = Console()
 err = Console(stderr=True)
@@ -205,7 +207,7 @@ def load(app: App, model):
 def info(app: App, model, as_json, no_load):
     """Show what MODEL is and the options it reports about itself.
 
-    Chat, TTS and 3D models report their options, but only while loaded (you're asked
+    Chat, TTS, 3D and video models report their options, but only while loaded (you're asked
     before one is loaded). Image, ASR and embedding models report nothing."""
     m = resolve(app.catalog(), model)
     data = {"catalog": catalog_row(m)}
@@ -615,29 +617,34 @@ def _open(path: Path) -> None:
 
 
 @cli.command()
-@click.argument("prompt", nargs=-1, required=True)
-@click.option("-m", "--model")
-@click.option("-o", "--output", type=click.Path(path_type=Path), default=Path("image.png"), show_default=True)
+@generator("image.png", "image")
 @click.option("--size", default="1024x1024", show_default=True, help="WIDTHxHEIGHT")
-@click.option("--seed", type=click.IntRange(0), help="Reuse a seed to reproduce an image (default: random).")
 @click.option("--steps", type=click.IntRange(1), help="Denoising steps (default: the model's own).")
 @click.option("--guidance", type=float, help="Guidance scale (default: the model's own).")
 @click.option("--negative", help="What the image should not contain.")
-@click.option("--open", "open_", is_flag=True, help="Open the image when done.")
 @extra_option("in the image request")
 @bundle("opts", ImageOptions, "size", "seed", "steps", "guidance", "negative", "extra")
 @pass_app
-def image(app: App, prompt, model, output, opts: ImageOptions, open_):
+def image(app: App, req: Prompt, saved: SavedFile, opts: ImageOptions):
     """Generate an image from PROMPT."""
-    m = app.model_for("image", model)
+    m = app.model_for("image", req.model)
     app.ensure_loaded(m)
-    seed = random.randrange(2**31) if opts.seed is None else opts.seed
+    seed = _seed(opts.seed)
     with err.status(f"Generating with {m.name}…"):
-        data = app.client.image(m.id, " ".join(prompt), **opts.request(seed))
-    output.write_bytes(data)
-    click.echo(f"Saved {output} (seed {seed})")
-    if open_:
-        _open(output)
+        data = app.client.image(m.id, req.text, **opts.request(seed))
+    _save(saved, data, f"seed {seed}")
+
+
+def _seed(given: int | None) -> int:
+    """The device doesn't report the seed it used, so pick one to keep results reproducible."""
+    return random.randrange(2**31) if given is None else given
+
+
+def _save(saved: SavedFile, data: bytes, note: str) -> None:
+    saved.output.write_bytes(data)
+    click.echo(f"Saved {saved.output} ({note})")
+    if saved.open_:
+        _open(saved.output)
 
 
 @cli.command()
@@ -700,6 +707,40 @@ def embed(app: App, texts, model, extra):
     d = app.client.embed(m.id, items, **extra)
     for text, row in zip(items, sorted(d["data"], key=lambda r: r["index"])):
         click.echo(json.dumps({"input": text, "embedding": row["embedding"]}))
+
+
+@cli.command()
+@generator("video.mp4", "video")
+@click.option("--size", default="832x480", show_default=True,
+              help="WIDTHxHEIGHT, one of the model's sizes (MiniMax-H3-Turbo: 832x480, 480x832, 1344x768, 768x1344).")
+@click.option("--seconds", type=int, default=4, show_default=True, help=f"Clip length, 1-{MAX_SECONDS}.")
+@click.option("--steps", type=int, help="Sampling steps (default: the model's own; fewer is faster).")
+@click.option("-i", "--image", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Start frame: animate this image instead of starting from nothing.")
+@extra_option("in the video request")
+@bundle("opts", VideoOptions, "size", "seconds", "steps", "seed", "image", "extra")
+@pass_app
+def video(app: App, req: Prompt, saved: SavedFile, opts: VideoOptions):
+    """Generate a short video clip with sound from PROMPT. Takes minutes:
+    about 7 min for 2 s at 832x480; bigger sizes and more steps take much longer."""
+    _check_video(opts, {})
+    m = app.model_for("video", req.model)
+    app.ensure_loaded(m)
+    _check_video(opts, app.client.video_info(m.id))
+    seed = _seed(opts.seed)
+    err.print(f"[dim]{opts.seconds}s at {opts.size}, seed {seed}. The device gives up after 1 hour.[/]")
+    try:
+        data = VideoJob(app.client, _stage_progress).render(m.id, req.text, opts.request(seed))
+    except KeyboardInterrupt:
+        err.print(f"[yellow]The device keeps rendering; `tai unload {m.name}` stops it.[/]")
+        raise
+    _save(saved, data, f"seed {seed}")
+
+
+def _check_video(opts: VideoOptions, info: dict) -> None:
+    problems = opts.problems(info)
+    if problems:
+        raise click.UsageError("; ".join(problems))
 
 
 @cli.command("3d")

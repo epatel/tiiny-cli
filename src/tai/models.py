@@ -20,6 +20,7 @@ TASK_BY_TYPE = {
     "ASR": "asr",
     "Text Embedding": "embed",
     "Image-to-3D": "3d",
+    "Text-to-Video": "video",
 }
 
 LOADED = ("running",)

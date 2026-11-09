@@ -32,6 +32,7 @@ Model ids contain a slash (`Qwen/Qwen3-Coder-Next`), and the slash goes straight
 | image | `POST /v1/images/generations` | OpenAI format, returns `b64_json`, `size: "WxH"`. Also takes `seed`, `steps`, `guidance_scale`, `negative_prompt`. The seed used is not returned, so `tai image` always sends one (random by default) and prints it. `POST /v1/image/generate` returns raw PNG bytes instead |
 | tts | `POST /v1/synthesize` `{model, text, config?}` | Returns JSON `{audio_data: base64 WAV 24 kHz mono, duration, …}`. Voice design goes in as `config: {instruct: "female, british accent"}`; a top-level `instruct` is rejected. **`/v1/audio/speech` returns 500 "upstream TTS model failed" for OmniVoice, so don't use it.** Valid instruct words: `male/female`, age groups, `low/high pitch`, `whisper`, accents |
 | asr | `POST /v1/audio/transcriptions` | multipart `model`, `file`, optional `language`; returns `{text}` |
+| video | `POST /v1/videos` → `GET /v1/videos/{id}` → `GET /v1/videos/{id}/content` | MiniMax-H3-Turbo. OpenAI-style job; see "Video" below |
 | 3d | `/v1/3d/*` | The gateway maps this onto the TRELLIS container's `/v1/*`. Multi-stage pipeline: shape → texture → (simplify) → export, polled per task. Any 5xx during polling (e.g. 504) is transient |
 
 ### Asking a model for its options (`tai info`)
@@ -41,7 +42,7 @@ Only some models describe themselves, and only while loaded (checked 2026-11-09)
 - chat and TTS: `GET /v1/capabilities?model=<id>`. Chat gives modalities, `supported`, `thinking` (no sampling params; those are plain OpenAI fields). OmniVoice gives `capabilities`, `duration` limits, `instruct_list` and `instruct_exclusive_groups` (pick at most one per group).
 - 3D: `GET /v1/3d/capabilities` (`?model=` when two 3D models are loaded): stages, qualities, inputs and params per stage, `stage_specs`.
 - Image, ASR, embedding: none. `/v1/capabilities` answers 400 "Model … does not support tts", so `tai info` doesn't call it for them. Not loaded → 404 "is not loaded".
-- Video (`lightx2v/MiniMax-H3-Turbo`, type Text-to-Video, installed but unsupported by tai): the community notes say `/v1/video/info`; not checked.
+- Video: `GET /v1/video/info?model=<id>` (canvases, step options, fps, keyframes, audio).
 
 `tai info` asks before loading a model to query it (`-y` loads, `--no-load` never does).
 
@@ -58,6 +59,17 @@ Implemented in `src/tai/mesh.py`: `Mesh3D.generate` runs the stages, `run` submi
 - `GET /v1/3d/tasks/{id}/artifacts/{artifact_id}` downloads an artifact. `GET /v1/3d/capabilities` lists the stages and their params. TRELLIS rejects params a stage doesn't list in `stage_specs[stage]` (`params` keys + `controls`), so `tai 3d` filters `inference_quality`/`seed` per stage (`MeshOptions.controls_for`).
 - Inputs per stage: shape takes `image`; texture and simplify take `shape_artifact`; export takes `shape_artifact` + `material_artifact` (texture's output), optionally `geometry_artifact` (simplify's output), and returns `mesh_glb`.
 - Rough timings: shape ≈ 4 min, texture ≈ 2 min, export ≈ 8 min. An unsimplified GLB is about 120 MB. With simplify (`target_faces: 200000`, ≈ 25 s) export drops to ≈ 25 s and the GLB to about 16 MB. Simplify outputs an artifact of type `geometry…`.
+
+### Video (`tai video`, `src/tai/video.py`)
+
+MiniMax-H3-Turbo (type Text-to-Video, 49% NPU, text or a start image → MP4 with AAC audio). From the community notes (tested there on 0.1.38) and our own run:
+
+- `POST /v1/videos` JSON `{model, prompt, size: "WxH", seconds: "2" (a string), steps, seed, image}`; `image` is a start frame as a data URL. Answers `{id, status: queued}`.
+- Poll `GET /v1/videos/{id}`: `status` queued → in_progress → completed / failed, `progress` 0-100, `error {code, message}`. `GET …/content` is the MP4.
+- `/v1/video/info` (checked 2026-11-09): `canvases` is a list of `{width, height}` objects (not "WxH" strings, as the notes suggested; `video.sizes` converts), `step_options` 4-8, `default_steps` 7, `fps` 24, `max_keyframes` 2, `audio {channels: 2, sample_rate: 32000}`, and `default_guidance_scale` / `default_shift` (-1 = the model's own; untested as request fields, try `-x`).
+- The model is compiled for fixed shapes: only the sizes in `canvases` (1344x768, 768x1344, 832x480, 480x832) and at most 7 s. The submit accepts anything and the job fails later, so `VideoOptions.problems` checks `seconds` before loading and size/steps against `/v1/video/info` after.
+- Times: 2 s at 832x480 with 4 steps ≈ 7 min (7m17s on ours, 2026-11-09: a 2.37 s clip, H.264 24 fps + 32 kHz stereo AAC); 5 s at 1344x768 ≈ 32 min. **The gateway fails a job after 1 hour** (`GENERATION_TIMEOUT`) but the NPU keeps rendering; `DELETE /v1/videos/{id}` doesn't stop it, unloading the model does (slowly, and the next launch may answer 409 `cleanup_failed`: just retry). Ctrl-C in `tai video` says so.
+- tai always sends a seed (random unless `--seed`) and prints it, as for images.
 
 ## Rediscovering the API
 

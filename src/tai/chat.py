@@ -24,10 +24,13 @@ CHAT_HELP = """[bold]/model NAME[/] switch model   [bold]/image PATH[/] attach i
 EXIT = object()  # returned by a handler to end the loop
 
 
-def image_part(path: Path) -> dict:
+def data_url(path: Path) -> str:
     mime = mimetypes.guess_type(path.name)[0] or "image/png"
-    b64 = base64.b64encode(path.read_bytes()).decode()
-    return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+    return f"data:{mime};base64,{base64.b64encode(path.read_bytes()).decode()}"
+
+
+def image_part(path: Path) -> dict:
+    return {"type": "image_url", "image_url": {"url": data_url(path)}}
 
 
 def user_message(text: str, images: list[Path]) -> dict:

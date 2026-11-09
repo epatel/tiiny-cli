@@ -95,6 +95,47 @@ def chat_options(f):
 
 
 @dataclass(frozen=True)
+class SavedFile:
+    """Where a generated file goes (-o) and whether to open it when done (--open)."""
+    output: Path
+    open_: bool = False
+
+
+def saved_file(default: str, noun: str):
+    """Add -o/--output (default ``default``) and --open as ``saved: SavedFile``."""
+    def decorate(f):
+        f = bundle("saved", SavedFile, "output", "open_")(f)
+        f = click.option("--open", "open_", is_flag=True, help=f"Open the {noun} when done.")(f)
+        return click.option("-o", "--output", type=click.Path(path_type=Path), default=Path(default),
+                            show_default=True)(f)
+    return decorate
+
+
+@dataclass(frozen=True)
+class Prompt:
+    """PROMPT words and -m/--model of a command that generates a file (image, video)."""
+    prompt: tuple[str, ...] = ()
+    model: str | None = None
+
+    @property
+    def text(self) -> str:
+        return " ".join(self.prompt)
+
+
+def generator(default: str, noun: str):
+    """PROMPT and -m as ``req: Prompt``, -o/--open as ``saved: SavedFile``, and a --seed
+    (random unless given; collect it in the command's own bundle)."""
+    def decorate(f):
+        f = click.option("--seed", type=click.IntRange(0),
+                         help=f"Reuse a seed to reproduce the {noun} (default: random).")(f)
+        f = saved_file(default, noun)(f)
+        f = bundle("req", Prompt, "prompt", "model")(f)
+        f = click.option("-m", "--model")(f)
+        return click.argument("prompt", nargs=-1, required=True)(f)
+    return decorate
+
+
+@dataclass(frozen=True)
 class Question:
     """What `ask` sends: the prompt words plus attached files."""
     prompt: tuple[str, ...] = ()

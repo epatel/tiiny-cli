@@ -52,6 +52,8 @@ tai tts "Hej, hur mår du?" -x language=sv          # -x KEY=VALUE: any option t
 tai asr recording.wav
 tai embed "first text" "second text"           # JSON lines
 tai 3d toy.png --faces 200000 -o toy.glb       # ~15 min, image → textured mesh
+tai video "a fox in the snow" --seconds 2 --steps 4 --open   # clip with sound, ~7 min
+tai video -i fox.png "the fox starts running"  # animate a start frame; max 7 s, 4 sizes
 
 tai agent                   # coding agent (full-screen) in the current folder
 tai agent "fix the failing test"   # start with a task; -c continues here

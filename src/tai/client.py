@@ -223,7 +223,27 @@ class TiinyClient:
         return self._json("GET", f"/v1/3d/tasks/{task_id}")["data"]
 
     def task3d_artifact(self, task_id: str, artifact_id: str) -> bytes:
-        r = self.http.get(f"/v1/3d/tasks/{task_id}/artifacts/{artifact_id}")
+        return self._bytes(f"/v1/3d/tasks/{task_id}/artifacts/{artifact_id}")
+
+    # -- video (MiniMax-H3-Turbo): OpenAI-style jobs ------------------------
+    def video_info(self, model: str) -> dict:
+        """A loaded video model's options: `canvases` (the only sizes), `step_options`, `fps`, ..."""
+        d = self._json("GET", "/v1/video/info", params={"model": model})
+        return d["data"] if isinstance(d.get("data"), dict) else d
+
+    def video_submit(self, model: str, prompt: str, **fields) -> str:
+        """Start a render; ``fields``: size "WxH", seconds (a string), steps, seed, image (data URL)."""
+        return self._json("POST", "/v1/videos", json={"model": model, "prompt": prompt, **fields})["id"]
+
+    def video(self, video_id: str) -> dict:
+        """`status` queued → in_progress → completed / failed, `progress` 0-100, `error`."""
+        return self._json("GET", f"/v1/videos/{video_id}")
+
+    def video_content(self, video_id: str) -> bytes:
+        return self._bytes(f"/v1/videos/{video_id}/content")
+
+    def _bytes(self, path: str) -> bytes:
+        r = self.http.get(path)
         if r.status_code >= 400:
             raise _err(r)
         return r.content
