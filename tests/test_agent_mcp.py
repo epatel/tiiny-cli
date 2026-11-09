@@ -6,6 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 from tai.agent import mcp_client as M
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import ExceptionGroup  # backport, installed with anyio (mcp)
 from tai.agent.tools import ToolContext, ToolError
 
 ECHO = Path(__file__).parent / "fixtures" / "echo_mcp.py"
