@@ -45,7 +45,7 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
 - 2026-11-08 — `tai chat` can hide the reasoning text (`/think show|hide`, setting `show_thinking`): display only, the model still thinks; hidden shows a stderr spinner (so does `tai ask` without `--show-thinking`).
 - 2026-11-08 — `--no-save` (chat, agent) swaps in an in-memory copy of the store with only the settings, so nothing reaches disk; it can't be combined with -c/-r. `tai history clear` deletes all sessions + agent prompt history and VACUUMs. Neither affects what the device's vault records.
 - 2026-11-08 — `tai serve` (user choices): one key for personal use (`TAI_API_KEY`, same name on server and client); everything tai can do locally is allowed remotely; the server only takes a port (`--port`/`TAI_SERVE_PORT`) and binds 127.0.0.1; nginx owns the external URL, and any prefix it leaves is ignored. A forwarding proxy rather than a higher-level API, so the client code is unchanged.
-- 2026-11-09 — Python ≥ 3.10 (aiohttp, click and mcp need it). macOS ships 3.9, so `make setup` checks the version and takes `PYTHON=`; code avoids 3.11-only builtins (`BaseExceptionGroup` is duck-typed).
+- 2026-11-09 — Python ≥ 3.10 (aiohttp, click and mcp need it). macOS ships 3.9, so `make setup` checks the version and takes `PYTHON=`; code avoids 3.11-only builtins (`BaseExceptionGroup` is duck-typed). `mcp` (2.x) and `httpx2` are declared runtime dependencies; they were missing, so fresh installs had no MCP.
 - 2026-11-08 — Chat history is persisted text-only. Images attached in a past turn are not re-sent on resume.
 
 ## Current state / handoff
