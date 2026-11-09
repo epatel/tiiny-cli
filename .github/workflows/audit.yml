@@ -1,0 +1,41 @@
+name: Audit
+
+# Known vulnerabilities (PyPI advisory database via pip-audit) in the runtime
+# dependencies a user gets from `pip install`, resolved inside the ranges in
+# pyproject.toml. Runs daily, since new advisories need no commit here.
+on:
+  push:
+    branches: [main]
+    paths: [pyproject.toml, .github/workflows/audit.yml]
+  pull_request:
+    paths: [pyproject.toml, .github/workflows/audit.yml]
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+# actions are pinned to commit SHAs; Dependabot proposes updates
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Resolve the runtime dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/app"
+          "$RUNNER_TEMP/app/bin/pip" install -q .
+          "$RUNNER_TEMP/app/bin/pip" freeze | grep -v '^tai[ =@]' > "$RUNNER_TEMP/requirements.txt"
+          cat "$RUNNER_TEMP/requirements.txt"
+      - name: pip-audit
+        run: |
+          python -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/pip" install -q "pip-audit==2.10.1"
+          "$RUNNER_TEMP/audit/bin/pip-audit" -r "$RUNNER_TEMP/requirements.txt" \
+            --no-deps --disable-pip --progress-spinner off --desc on

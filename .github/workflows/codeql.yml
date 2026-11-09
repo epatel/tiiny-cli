@@ -1,0 +1,38 @@
+name: CodeQL
+
+# Static analysis (SAST) of the Python sources and the workflows; findings go to
+# the repo's code-scanning alerts.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 3"  # weekly: picks up new CodeQL queries
+  workflow_dispatch:
+
+# actions are pinned to commit SHAs; Dependabot proposes updates
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write  # upload the results to code scanning
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}
