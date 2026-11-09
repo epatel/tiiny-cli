@@ -94,3 +94,9 @@ def test_hub_end_to_end_with_a_real_stdio_server(tmp_path):
     finally:
         hub.close()
     assert "echo called" in (tmp_path / "logs" / "mcp-echo.log").read_text()
+
+
+def test_describe_unwraps_exception_groups():
+    group = ExceptionGroup("outer", [ExceptionGroup("inner", [OSError("refused")])])
+    assert M._describe(group) == "OSError: refused"
+    assert M._describe(ValueError()) == "ValueError"

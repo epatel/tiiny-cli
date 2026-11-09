@@ -18,6 +18,8 @@ The device only runs *loaded* models, and they share an NPU budget. `tai` loads 
 
 ## Install
 
+Requires Python 3.10 or newer. macOS ships 3.9 (`/usr/bin/python3`, from the Xcode Command Line Tools), so install a newer one first, e.g. `brew install python` or `uv python install 3.12`. `make setup` uses `python3` from your PATH. To pick another one, run `make setup PYTHON=python3.12`.
+
 ```sh
 make setup   # creates .venv and installs tai into it
 make link    # optional: symlink tai into ~/.local/bin (PREFIX=... to change)

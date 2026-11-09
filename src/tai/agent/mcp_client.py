@@ -229,8 +229,11 @@ class McpHub:
 
 
 def _describe(e: BaseException) -> str:
-    """Innermost message of an exception (group), e.g. from anyio task groups."""
-    while isinstance(e, BaseExceptionGroup) and e.exceptions:
+    """Innermost message of an exception (group), e.g. from anyio task groups.
+
+    Duck-typed, not `isinstance(e, BaseExceptionGroup)`: that builtin is 3.11+, and on
+    3.10 anyio raises the `exceptiongroup` backport instead."""
+    while isinstance(getattr(e, "exceptions", None), tuple) and e.exceptions:
         e = e.exceptions[0]
     return f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
 

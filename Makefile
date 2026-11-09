@@ -1,6 +1,7 @@
 VENV   := .venv
 BIN    := $(VENV)/bin
 PREFIX ?= $(HOME)/.local
+PYTHON ?= python3
 
 .PHONY: help setup test health scan check link unlink clean
 
@@ -8,7 +9,11 @@ help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
 
 $(BIN)/tai: pyproject.toml
-	python3 -m venv $(VENV)
+	@$(PYTHON) -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null || { \
+	  echo "error: tai needs Python 3.10 or newer, but '$(PYTHON)' is $$($(PYTHON) -V 2>/dev/null || echo 'not found')." >&2; \
+	  echo "  macOS ships 3.9. Install a newer one (brew install python, or uv python install 3.12)," >&2; \
+	  echo "  then run: make setup PYTHON=/path/to/python3.12" >&2; exit 1; }
+	$(PYTHON) -m venv $(VENV)
 	$(BIN)/pip install -q --upgrade pip
 	$(BIN)/pip install -q -e '.[dev]'
 	@touch $@
