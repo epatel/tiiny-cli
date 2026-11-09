@@ -45,6 +45,10 @@ Only some models describe themselves, and only while loaded (checked 2026-11-09)
 
 `tai info` asks before loading a model to query it (`-y` loads, `--no-load` never does).
 
+OmniVoice language: `config.language` on `/v1/synthesize` (`tai tts -x language=sv`); `auto` is the same as leaving it out. Output is deterministic for the same text and config, so audio hashes compare settings: `sv` and `en` change the audio. Unknown codes (`nonsense-xx`) are accepted silently and change it too, so check against `supported_languages` (647 codes) yourself.
+
+`-x KEY=VALUE` (`src/tai/options.py`: `extra_option`, `parse_extras`, `merge`) is the generic way to reach fields like these; each command decides where they go (body, TTS `config`, ASR form fields) and they're deep-merged over tai's own, so `-x` wins.
+
 ### 3D pipeline details
 
 Implemented in `src/tai/mesh.py`: `Mesh3D.generate` runs the stages, `run` submits and polls one stage (retrying gateway 5xx), and `StageResult.ref` builds input references.

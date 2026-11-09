@@ -161,8 +161,8 @@ class TiinyClient:
                 return
             yield json.loads(data)
 
-    def embed(self, model: str, inputs: list[str]) -> dict:
-        return self._json("POST", "/v1/embeddings", json={"model": model, "input": inputs})
+    def embed(self, model: str, inputs: list[str], **extra) -> dict:
+        return self._json("POST", "/v1/embeddings", json={"model": model, "input": inputs, **extra})
 
     def image(self, model: str, prompt: str, size: str = "1024x1024", **extra) -> bytes:
         body = {"model": model, "prompt": prompt, "size": size, "n": 1, **extra}
@@ -181,10 +181,9 @@ class TiinyClient:
         audio = base64.b64decode(d.pop("audio_data"))
         return audio, d
 
-    def asr(self, model: str, path: Path, language: str | None = None) -> dict:
-        data = {"model": model}
-        if language:
-            data["language"] = language
+    def asr(self, model: str, path: Path, fields: dict[str, str] | None = None) -> dict:
+        """``fields``: further form fields, e.g. ``{"language": "sv"}``."""
+        data = {**(fields or {}), "model": model}
         with open(path, "rb") as f:
             return self._json(
                 "POST", "/v1/audio/transcriptions", data=data, files={"file": (path.name, f)}

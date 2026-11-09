@@ -48,6 +48,7 @@ tai history clear           # delete all sessions and the agent's prompt history
 
 tai image "a fox in the snow, watercolor" -o fox.png --size 1024x1024 --open
 tai tts "Hello there" -i "female, british accent" --play
+tai tts "Hej, hur mår du?" -x language=sv          # -x KEY=VALUE: any option tai has no flag for
 tai asr recording.wav
 tai embed "first text" "second text"           # JSON lines
 tai 3d toy.png --faces 200000 -o toy.glb       # ~15 min, image → textured mesh
@@ -68,6 +69,13 @@ tai config set show_thinking off               # tai chat: hide the reasoning te
 ```
 
 Models can be named by full id, display name, or any unique part of either (`coder`, `z-image`, `omni`).
+
+`-x KEY=VALUE` (repeatable) sends a field tai has no flag for: in the request body for `ask`,
+`chat`, `image` and `embed`, inside `config` for `tts`, as a form field for `asr`. `a.b=1`
+nests, and values are JSON when they parse (`temperature=0.2`, `stop='["\n"]'`), else text.
+`tai info MODEL` shows what a model reports it accepts (OmniVoice lists its
+`supported_languages`). tai doesn't check the fields; the device decides, and some (like
+an unknown language) it accepts silently.
 
 ## Remote use: `tai serve`
 

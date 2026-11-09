@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import click
@@ -28,7 +28,8 @@ from tai.info import catalog_row, render, reported, reports_options
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
 from tai.models import Model, ResolveError, build_catalog, resolve
-from tai.options import AgentRequest, AskOutput, ChatOptions, ImageOptions, Question, SessionRef, bundle, chat_options
+from tai.options import (AgentRequest, AskOutput, AsrOptions, ChatOptions, ImageOptions, Question,
+                         SessionRef, TtsConfig, bundle, chat_options, extra_option, merge)
 
 out = Console()
 err = Console(stderr=True)
@@ -292,6 +293,10 @@ class ChatRequest:
     messages: list[dict]
     extra: dict  # extra request fields, e.g. chat_template_kwargs
 
+    def with_extra(self, extra: dict) -> ChatRequest:
+        """The same request with ``-x`` fields merged over its own."""
+        return replace(self, extra=merge(self.extra, extra))
+
 
 def _chat_request(app: App, model: Model, messages: list[dict], think: bool | None) -> ChatRequest:
     return ChatRequest(model, messages, _think_extra(app, model, think))
@@ -366,7 +371,8 @@ def ask(app: App, question: Question, opts: ChatOptions, output: AskOutput):
     m = app.model_for("chat", opts.model)
     images, text = _split_files(m, question.files, _read_prompt(question.prompt))
     app.ensure_loaded(m)
-    req = _chat_request(app, m, _system(opts) + [user_message(text, images)], opts.think)
+    messages = _system(opts) + [user_message(text, images)]
+    req = _chat_request(app, m, messages, opts.think).with_extra(opts.extra)
     if output.as_json:
         out.print_json(json.dumps(app.client.chat(m.id, req.messages, **req.extra)))
     else:
@@ -418,7 +424,8 @@ def chat(app: App, opts: ChatOptions, session: SessionRef):
     err.print(f"[bold]{state.model.name}[/] [dim]session {state.sid} — /help for commands, Ctrl-D to exit[/]")
 
     def reply(m: Model, convo: list[dict], think: bool | None) -> str:
-        return _stream_reply(app, _chat_request(app, m, convo, think), show_thinking=state.show_thinking)
+        req = _chat_request(app, m, convo, think).with_extra(opts.extra)
+        return _stream_reply(app, req, show_thinking=state.show_thinking)
 
     ChatSession(app, state, err, reply).run()
 
@@ -617,7 +624,8 @@ def _open(path: Path) -> None:
 @click.option("--guidance", type=float, help="Guidance scale (default: the model's own).")
 @click.option("--negative", help="What the image should not contain.")
 @click.option("--open", "open_", is_flag=True, help="Open the image when done.")
-@bundle("opts", ImageOptions, "size", "seed", "steps", "guidance", "negative")
+@extra_option("in the image request")
+@bundle("opts", ImageOptions, "size", "seed", "steps", "guidance", "negative", "extra")
 @pass_app
 def image(app: App, prompt, model, output, opts: ImageOptions, open_):
     """Generate an image from PROMPT."""
@@ -638,8 +646,10 @@ def image(app: App, prompt, model, output, opts: ImageOptions, open_):
 @click.option("-o", "--output", type=click.Path(path_type=Path), default=Path("speech.wav"), show_default=True)
 @click.option("-i", "--instruct", help='Voice design, e.g. "female, british accent, low pitch".')
 @click.option("--play", is_flag=True, help="Play the audio when done.")
+@extra_option("in the TTS config (e.g. language=sv)")
+@bundle("voice", TtsConfig, "instruct", "extra")
 @pass_app
-def tts(app: App, text, model, output, instruct, play):
+def tts(app: App, text, model, output, voice: TtsConfig, play):
     """Speak TEXT (or stdin) into a WAV file."""
     s = " ".join(text)
     if not s and not sys.stdin.isatty():
@@ -648,9 +658,9 @@ def tts(app: App, text, model, output, instruct, play):
         raise click.UsageError("Nothing to say.")
     m = app.model_for("tts", model)
     app.ensure_loaded(m)
-    instruct = instruct or app.store.get_setting("tts.instruct")
+    config = voice.config(default_instruct=app.store.get_setting("tts.instruct"))
     with err.status(f"Synthesizing with {m.name}…"):
-        audio, meta = app.client.tts(m.id, s, {"instruct": instruct} if instruct else None)
+        audio, meta = app.client.tts(m.id, s, config)
     output.write_bytes(audio)
     click.echo(f"Saved {output} ({meta.get('duration', '?')}s)")
     if play:
@@ -661,21 +671,24 @@ def tts(app: App, text, model, output, instruct, play):
 @click.argument("audio", type=click.Path(exists=True, path_type=Path))
 @click.option("-m", "--model")
 @click.option("-l", "--language", help="Language hint, e.g. en, sv.")
+@extra_option("as a form field of the transcription request")
+@bundle("opts", AsrOptions, "language", "extra")
 @pass_app
-def asr(app: App, audio, model, language):
+def asr(app: App, audio, model, opts: AsrOptions):
     """Transcribe an AUDIO file to text."""
     m = app.model_for("asr", model)
     app.ensure_loaded(m)
     with err.status(f"Transcribing with {m.name}…"):
-        d = app.client.asr(m.id, audio, language)
+        d = app.client.asr(m.id, audio, opts.fields())
     click.echo(d.get("text", ""))
 
 
 @cli.command()
 @click.argument("texts", nargs=-1)
 @click.option("-m", "--model")
+@extra_option("in the embeddings request")
 @pass_app
-def embed(app: App, texts, model):
+def embed(app: App, texts, model, extra):
     """Embed TEXTS (or stdin lines); prints one JSON object per input."""
     items = list(texts)
     if not items and not sys.stdin.isatty():
@@ -684,7 +697,7 @@ def embed(app: App, texts, model):
         raise click.UsageError("Nothing to embed.")
     m = app.model_for("embed", model)
     app.ensure_loaded(m)
-    d = app.client.embed(m.id, items)
+    d = app.client.embed(m.id, items, **extra)
     for text, row in zip(items, sorted(d["data"], key=lambda r: r["index"])):
         click.echo(json.dumps({"input": text, "embedding": row["embedding"]}))
 
