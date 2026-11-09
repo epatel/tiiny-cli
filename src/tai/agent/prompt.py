@@ -23,7 +23,8 @@ How to work:
 - Paths are relative to the project root unless absolute.
 - For anything that isn't plain text, use the viewer: `show` presents an image, audio, video, 3D model
   (.glb), HTML or Markdown in the user's browser; `ask` lets them choose or answer there. Generate
-  images with the `image` tool (it saves a PNG and shows it), not with `tai image`.
+  images with the `image` tool (it saves a PNG and shows it), not with `tai image`, and video clips
+  with the `video` tool, not `tai video`. A clip takes many minutes: say so before starting one.
 - You run on a Tiiny device. `tai` commands that use another model (e.g. `tai image`, `tai tts`)
   may have to unload your own model: run them as `tai -y …` (never pipe answers into prompts).
   You are reloaded automatically before your next step; tell the user that this takes a minute.

@@ -26,14 +26,17 @@ class FakeViewer:
 
 
 class FakeDevice:
-    """Coder (agent) loaded at 94%; the image model needs 23%."""
+    """Coder (agent) loaded at 94%; the image model needs 23%, the video model 49%."""
 
     def __init__(self):
-        self.status = {"q/Coder": "running", "t/Image": "downloaded"}
+        self.status = {"q/Coder": "running", "t/Image": "downloaded", "lx/Video": "downloaded"}
         self.log = []
+        self.polls = [{"status": "in_progress", "progress": 40}, {"status": "completed"}]
+        self.on_poll = None
 
     def models(self):
-        spec = {"q/Coder": ("Text Generation", 94), "t/Image": ("Text-to-Image", 23)}
+        spec = {"q/Coder": ("Text Generation", 94), "t/Image": ("Text-to-Image", 23),
+                "lx/Video": ("Text-to-Video", 49)}
         return [{"id": i, "display_name": i.split("/")[1], "type": t, "npu_usage": n, "status": self.status[i]}
                 for i, (t, n) in spec.items()]
 
@@ -58,6 +61,23 @@ class FakeDevice:
         self.extra = extra
         return b"\x89PNG" + b"0" * 2048
 
+    def video_info(self, model):
+        return {"canvases": [{"width": 832, "height": 480}, {"width": 1344, "height": 768}],
+                "step_options": [4, 5, 6, 7, 8]}
+
+    def video_submit(self, model, prompt, **fields):
+        self.log.append(("video", model, prompt))
+        self.video_fields = fields
+        return "v1"
+
+    def video(self, video_id):
+        if self.on_poll:
+            self.on_poll()
+        return self.polls.pop(0)
+
+    def video_content(self, video_id):
+        return b"MP4" + b"0" * 4096
+
 
 class FakeUI:
     def __init__(self, *answers):
@@ -72,6 +92,11 @@ class FakeUI:
 
     @contextmanager
     def progress(self, name):
+        yield lambda pct, msg: None
+
+    @contextmanager
+    def activity(self, label):
+        self.infos.append(label)
         yield lambda pct, msg: None
 
 
@@ -153,5 +178,44 @@ def test_ask_returns_the_answer_or_reports_no_answer(ctx):
 
 def test_tools_never_need_the_write_permission():
     tools, _ = tools_for()
-    assert {name: t.grant for name, t in tools.items()} == {"image": None, "show": None, "ask": None}
+    assert {name: t.grant for name, t in tools.items()} == {"image": None, "video": None, "show": None, "ask": None}
     assert tools["image"].summary({"prompt": "a cat"}) == "image a cat"
+
+
+@pytest.fixture
+def no_wait(monkeypatch):
+    monkeypatch.setattr("tai.agent.media.threading.Event.wait", lambda self, t=None: self.is_set())
+
+
+def test_video_asks_before_unloading_the_agent_then_saves_and_shows(ctx, no_wait):
+    (ctx.root / "fox.png").write_bytes(b"\x89PNG")
+    tools, m = tools_for(True)
+    out = tools["video"].run({"prompt": "A fox runs", "seconds": 2, "steps": 4, "seed": 7,
+                              "image": "fox.png"}, ctx)
+    assert out == "Saved videos/a-fox-runs.mp4 (4 KB, seed 7) and showed it in the viewer."
+    assert "the agent's model" in m.ui.questions[0]  # coder 94% + video 49% don't fit
+    assert ("stop", "q/Coder") in m.client.log and ("video", "lx/Video", "A fox runs") in m.client.log
+    fields = m.client.video_fields
+    assert fields["seconds"] == "2" and fields["steps"] == 4 and fields["seed"] == 7
+    assert fields["image"].startswith("data:image/png;base64,")
+    assert m.viewer.shown == [("video", "A fox runs", "a-fox-runs.mp4", None)]
+    assert "Rendering video (2s, 832x480)" in m.ui.infos
+
+
+def test_video_checks_options_before_loading_and_against_the_model(ctx, no_wait):
+    tools, m = tools_for(True)
+    with pytest.raises(ToolError, match="seconds must be 1-7"):
+        tools["video"].run({"prompt": "x", "seconds": 9}, ctx)
+    assert m.client.log == [] and m.ui.questions == []  # nothing loaded
+    with pytest.raises(ToolError, match="size must be one of 832x480, 1344x768"):
+        tools["video"].run({"prompt": "x", "size": "1920x1080"}, ctx)
+    with pytest.raises(ToolError, match="Start image not found"):
+        tools["video"].run({"prompt": "x", "image": "missing.png"}, ctx)
+
+
+def test_esc_stops_waiting_for_a_render(ctx, no_wait):
+    tools, m = tools_for(True)
+    m.client.on_poll = m.cancel.set  # the user presses Esc while it renders
+    with pytest.raises(ToolError, match="Interrupted. The device keeps rendering"):
+        tools["video"].run({"prompt": "x"}, ctx)
+    assert not (ctx.root / "videos").exists()

@@ -114,7 +114,7 @@ def run_agent(app, req: AgentRequest) -> None:
         media = MediaContext(app.client, viewer, agent_model=s.model.id)
         ext.tools.update(media_tools(media))
         ui = _build_app(app, s, ext, req)
-        ui.agent.on_cancel.append(viewer.cancel_asks)
+        ui.agent.on_cancel.extend([viewer.cancel_asks, media.cancel.set])
         ui.info.open_viewer = lambda: _open_viewer(viewer)
         media.ui = TuiLoaderUI(ui)
         ui.run()

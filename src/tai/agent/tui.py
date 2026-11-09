@@ -92,10 +92,13 @@ class TuiLoaderUI:
     def info(self, message: str) -> None:
         self.app.call_from_thread(self.app._busy, message)
 
-    @contextmanager
     def progress(self, name: str):
+        return self.activity(f"Loading {name}")
+
+    @contextmanager
+    def activity(self, label: str):
         def update(pct: float, msg: str) -> None:
-            self.app.call_from_thread(self.app._busy, f"Loading {name}", f"{pct:.0f}% {msg[:40]}".strip())
+            self.app.call_from_thread(self.app._busy, label, f"{pct:.0f}% {msg[:40]}".strip())
         yield update
 
 
