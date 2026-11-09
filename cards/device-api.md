@@ -34,6 +34,17 @@ Model ids contain a slash (`Qwen/Qwen3-Coder-Next`), and the slash goes straight
 | asr | `POST /v1/audio/transcriptions` | multipart `model`, `file`, optional `language`; returns `{text}` |
 | 3d | `/v1/3d/*` | The gateway maps this onto the TRELLIS container's `/v1/*`. Multi-stage pipeline: shape → texture → (simplify) → export, polled per task. Any 5xx during polling (e.g. 504) is transient |
 
+### Asking a model for its options (`tai info`)
+
+Only some models describe themselves, and only while loaded (checked 2026-11-09). `src/tai/info.py` maps task → endpoint:
+
+- chat and TTS: `GET /v1/capabilities?model=<id>`. Chat gives modalities, `supported`, `thinking` (no sampling params; those are plain OpenAI fields). OmniVoice gives `capabilities`, `duration` limits, `instruct_list` and `instruct_exclusive_groups` (pick at most one per group).
+- 3D: `GET /v1/3d/capabilities` (`?model=` when two 3D models are loaded): stages, qualities, inputs and params per stage, `stage_specs`.
+- Image, ASR, embedding: none. `/v1/capabilities` answers 400 "Model … does not support tts", so `tai info` doesn't call it for them. Not loaded → 404 "is not loaded".
+- Video (`lightx2v/MiniMax-H3-Turbo`, type Text-to-Video, installed but unsupported by tai): the community notes say `/v1/video/info`; not checked.
+
+`tai info` asks before loading a model to query it (`-y` loads, `--no-load` never does).
+
 ### 3D pipeline details
 
 Implemented in `src/tai/mesh.py`: `Mesh3D.generate` runs the stages, `run` submits and polls one stage (retrying gateway 5xx), and `StageResult.ref` builds input references.

@@ -24,6 +24,7 @@ from tai.chat import ChatSession, SessionState, user_message
 from tai.client import TiinyClient, TiinyError
 from tai.config import ConfigError, Env, Settings, data_dir, load_settings
 from tai.db import Store
+from tai.info import catalog_row, render, reported, reports_options
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
 from tai.models import Model, ResolveError, build_catalog, resolve
@@ -193,6 +194,43 @@ def load(app: App, model):
     if m.loaded:
         out.print(f"{m.name} is already loaded.")
     app.ensure_loaded(m)
+
+
+@cli.command()
+@click.argument("model")
+@click.option("--json", "as_json", is_flag=True)
+@click.option("--no-load", is_flag=True, help="Don't load MODEL to ask it; show what the catalog knows.")
+@pass_app
+def info(app: App, model, as_json, no_load):
+    """Show what MODEL is and the options it reports about itself.
+
+    Chat, TTS and 3D models report their options, but only while loaded (you're asked
+    before one is loaded). Image, ASR and embedding models report nothing."""
+    m = resolve(app.catalog(), model)
+    data = {"catalog": catalog_row(m)}
+    options, note = _reported_options(app, m, no_load)
+    if options is not None:
+        data["reported"] = options
+    if as_json:
+        out.print_json(json.dumps(data))
+    else:
+        for section, values in data.items():
+            out.print(f"[bold]{section}[/]")
+            out.print("\n".join(render(values, 1)), markup=False, highlight=False)
+    if note:
+        err.print(f"[dim]{note}[/]")
+
+
+def _reported_options(app: App, m: Model, no_load: bool) -> tuple[dict | None, str | None]:
+    if not reports_options(m):
+        return None, f"{m.type} models don't report their options; the catalog row is all there is."
+    if not m.loaded:
+        declined = no_load or not (app.yes or click.confirm(
+            f"{m.name} isn't loaded. Load it to ask for its options?", default=True, err=True))
+        if declined:
+            return None, f"{m.name} reports its options only while loaded (tai load {m.name})."
+        app.ensure_loaded(m)
+    return reported(app.client, m), None
 
 
 @cli.command()

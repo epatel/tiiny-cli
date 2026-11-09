@@ -12,6 +12,9 @@ See cards/device-api.md for the full endpoint map and quirks.
 
 from __future__ import annotations
 
+# The device's HTTP API takes model ids, paths and form fields as plain strings.
+# aihealth: disable=primitive_obsession
+
 import base64
 import json
 from collections.abc import Iterator
@@ -207,9 +210,15 @@ class TiinyClient:
         d = self._json("POST", "/v1/3d/tasks", data=data, files=files)
         return d["data"]["task_id"]
 
-    def task3d_capabilities(self) -> dict:
-        """The 3D model's stages, inputs and per-stage `stage_specs` (params + controls it accepts)."""
-        return self._json("GET", "/v1/3d/capabilities").get("data") or {}
+    def task3d_capabilities(self, model: str | None = None) -> dict:
+        """The 3D model's stages, inputs and per-stage `stage_specs` (params + controls it accepts).
+        ``model`` picks one when several 3D models are loaded."""
+        params = {"model": model} if model else None
+        return self._json("GET", "/v1/3d/capabilities", params=params).get("data") or {}
+
+    def capabilities(self, model: str) -> dict:
+        """What a loaded chat or TTS model reports about itself (inputs, thinking, voice options)."""
+        return self._json("GET", "/v1/capabilities", params={"model": model})
 
     def task3d(self, task_id: str) -> dict:
         return self._json("GET", f"/v1/3d/tasks/{task_id}")["data"]
