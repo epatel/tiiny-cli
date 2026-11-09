@@ -123,11 +123,18 @@ def run_agent(app, req: AgentRequest) -> None:
         ext.close()
 
 
+# Thinking for the agent: `agent.think`, else the general `think` (a --think flag beats both).
+# Kept apart because reasoning that is fine in a chat can push agent steps past the device's
+# 10-minute request limit (Qwen3.8-27B: 398 s for a fix that took 12 s without it).
+AGENT_THINK_SETTINGS = ("agent.think", "think")
+
+
 def _build_app(app, s: AgentSession, ext: Extensions, req: AgentRequest) -> AgentApp:
     from tai.cli import _think_extra  # shared with ask/chat
 
+    think = _think_extra(app, s.model, req.think, settings=AGENT_THINK_SETTINGS)
     config = AgentConfig(s.model.id, system_prompt(s.root, s.model.name, ext.prompt), ToolContext(s.root),
-                         extra=_think_extra(app, s.model, None), tools=ext.tools)
+                         extra=think, tools=ext.tools)
     transcript = Transcript(s.messages, on_message=lambda msg: app.store.add_raw_message(s.sid, msg))
     agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver
     info = AppInfo(_title(s, ext), initial=req.text, on_clear=lambda: app.store.clear_messages(s.sid),

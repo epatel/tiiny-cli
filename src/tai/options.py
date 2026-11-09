@@ -171,6 +171,7 @@ class AgentRequest:
     cont: bool = False
     no_mcp: bool = False
     no_save: bool = False
+    think: bool | None = None  # --think/--no-think; None: agent.think, then think
 
     @property
     def text(self) -> str | None:

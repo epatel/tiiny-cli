@@ -148,3 +148,11 @@ def test_chat_resume_by_name_with_model_override(fake):
 def test_chat_unknown_session(fake):
     r = CliRunner().invoke(cli_mod.cli, ["chat", "-r", "nope"], input="")
     assert r.exit_code == 2 and "No such session" in r.output
+
+
+def test_agent_think_setting_is_on_or_off_and_leaves_ask_alone(fake):
+    r = CliRunner().invoke(cli_mod.cli, ["config", "set", "agent.think", "maybe"])
+    assert r.exit_code == 2 and "must be on or off" in r.output
+    assert run("config", "set", "agent.think", "off").output.strip() == "agent.think = off"
+    run("ask", "-m", "vision", "hi")
+    assert "chat_template_kwargs" not in fake.requests[0]  # tai ask still uses the model's default

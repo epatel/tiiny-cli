@@ -83,7 +83,8 @@ flowchart LR
 
 - `App.agent_model`: chat models whose `supported` includes "Tool Use" (Qwen3-Coder-Next, Qwen3.6). Order: `-m`, then `tai config set default.agent …`, then a loaded one, then the cheapest.
 - The system prompt (`prompt.py`) holds the working rules, the environment, and the project's `AGENTS.md` or `CLAUDE.md` (first one found, truncated to 20k characters).
-- Tool calling on the device uses standard OpenAI `tools` / `tool_calls` / `role: tool`. Verified on Qwen3-Coder-Next.
+- Tool calling on the device uses standard OpenAI `tools` / `tool_calls` / `role: tool`. Verified on Qwen3-Coder-Next, and on Qwen3.8-27B with a single call (2026-11-09).
+- Thinking: `--think/--no-think`, else the `agent.think` setting, else `think`, else the model's default (`AGENT_THINK_SETTINGS` in `command.py`, through `cli._think_extra`). Kept apart from chat because reasoning can push one agent step past the device's 10-minute request limit (504). Measured 2026-11-09 on three graded coding tasks: Qwen3.8-27B (52% NPU, thinks by default) without thinking solved all three in 12-48 s, like Qwen3-Coder-Next (94%) at 11-35 s, both ~17-22 tok/s; with thinking one task took 398 s instead of 12 s and another hit the 504 at ~10 min. So with Qwen3.8 as the agent model, set `agent.think off`.
 
 ## Testing
 

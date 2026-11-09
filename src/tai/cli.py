@@ -39,6 +39,7 @@ err = Console(stderr=True)
 SETTING_KEYS = {
     "default.chat", "default.agent", "default.image", "default.tts", "default.asr", "default.embed", "default.3d",
     "think",  # on|off — default thinking mode for models that can toggle it
+    "agent.think",  # on|off — the same for `tai agent` only (overrides `think` there)
     "show_thinking",  # on|off — print reasoning in `tai chat` (off: a "thinking…" spinner; `/think show|hide`)
     "tts.instruct",  # default voice-design instruct, e.g. "female, british accent"
 }
@@ -275,7 +276,7 @@ def config_set(app: App, key, value):
         value = app.agent_model(value).id
     elif key.startswith("default."):
         value = resolve(app.catalog(), value, task=key.split(".", 1)[1]).id
-    elif key in ("think", "show_thinking") and value not in ("on", "off"):
+    elif key in ("think", "agent.think", "show_thinking") and value not in ("on", "off"):
         raise click.BadParameter(f"{key} must be on or off")
     app.store.set_setting(key, value)
     out.print(f"{key} = {value}")
@@ -304,10 +305,12 @@ def _chat_request(app: App, model: Model, messages: list[dict], think: bool | No
     return ChatRequest(model, messages, _think_extra(app, model, think))
 
 
-def _think_extra(app: App, model: Model, think: bool | None) -> dict:
+def _think_extra(app: App, model: Model, think: bool | None, settings: tuple[str, ...] = ("think",)) -> dict:
+    """The request field that turns thinking on or off: ``think`` if given (a flag), else the
+    first of ``settings`` that is set; nothing (the model's default) if none is."""
     if think is None:
-        s = app.store.get_setting("think")
-        think = None if s is None else s == "on"
+        stored = next((s for s in map(app.store.get_setting, settings) if s is not None), None)
+        think = None if stored is None else stored == "on"
     if think is None or not model.thinking.get("toggleable"):
         return {}
     return {"chat_template_kwargs": {"enable_thinking": think}}
@@ -460,7 +463,9 @@ def _resume_session(app: App, ref: str | None, opts: ChatOptions) -> SessionStat
 @click.option("-c", "--continue", "cont", is_flag=True, help="Continue the latest agent session in this folder.")
 @click.option("--no-mcp", is_flag=True, help="Don't connect to MCP servers.")
 @click.option("--no-save", is_flag=True, help="Don't save this session (or its prompts) to the history.")
-@bundle("req", AgentRequest, "task", "model", "resume", "cont", "no_mcp", "no_save")
+@click.option("--think/--no-think", default=None,
+              help="Toggle reasoning (default: the agent.think setting, else think, else the model's own).")
+@bundle("req", AgentRequest, "task", "model", "resume", "cont", "no_mcp", "no_save", "think")
 @pass_app
 def agent(app: App, req: AgentRequest):
     """Coding agent in a full-screen UI: reads, edits and runs commands in this folder.

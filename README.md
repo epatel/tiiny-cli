@@ -67,6 +67,7 @@ tai load qwen3.6            # pre-load; tai unload --all
 tai info omni               # what a model is + the options it reports (--json, --no-load)
 tai config set default.chat coder              # preferred model per task
 tai config set think off                       # default reasoning mode
+tai config set agent.think off                 # the same for tai agent only (also: tai agent --no-think)
 tai config set show_thinking off               # tai chat: hide the reasoning text by default
 ```
 

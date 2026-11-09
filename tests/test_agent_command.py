@@ -52,3 +52,26 @@ def test_resume_errors(app, tmp_path):
     chat = app.store.create_session("q/Coder")
     with pytest.raises(click.UsageError, match="is a chat session"):
         open_session(app, SessionRef(resume=str(chat)), None, tmp_path)
+
+
+def test_agent_thinking_has_its_own_setting(app):
+    from tai.agent.command import AGENT_THINK_SETTINGS
+    from tai.cli import _think_extra
+
+    thinker = Model(id="q/Q38", name="Q38", type="Image-Text-to-Text", npu=52, status="running",
+                    thinking={"toggleable": True})
+
+    def agent(flag=None):
+        return _think_extra(app, thinker, flag, settings=AGENT_THINK_SETTINGS)
+
+    def chat():
+        return _think_extra(app, thinker, None)
+
+    off, on = ({"chat_template_kwargs": {"enable_thinking": v}} for v in (False, True))
+    assert agent() == {} and chat() == {}            # nothing set: the model's default
+    app.store.set_setting("think", "on")
+    assert agent() == on and chat() == on            # agent falls back to `think`
+    app.store.set_setting("agent.think", "off")
+    assert agent() == off and chat() == on           # agent.think wins for the agent only
+    assert agent(flag=True) == on                    # --think beats both
+    assert _think_extra(app, CODER, True, settings=AGENT_THINK_SETTINGS) == {}  # can't toggle: nothing sent
