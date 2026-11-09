@@ -350,7 +350,7 @@ class AgentApp(App):
             return
         self._add(Static(Text(f"› {text}"), classes="user"))
         self.busy = True
-        self._busy("thinking…")
+        self._busy("working…")
         self.run_turn(text)
 
     def _command(self, cmd: str, arg: str) -> None:
@@ -395,7 +395,7 @@ class AgentApp(App):
         self.device_busy = False
         self._note(markdown)
         if self.busy:
-            self._busy("thinking…")
+            self._busy("working…")
         else:
             self._status("ready")
 
@@ -478,6 +478,7 @@ class AgentApp(App):
 
     def _on_reasoning(self, ev: ReasoningDelta) -> None:
         if self._think is None:
+            self._busy("thinking…")  # only while the model really reasons
             self._think_buf = ""
             self._think = Static("", classes="thinking")
             self._add(self._think)
@@ -504,12 +505,12 @@ class AgentApp(App):
         body = ev.result if len(ev.result) <= RESULT_PREVIEW else ev.result[:RESULT_PREVIEW] + "\n…"
         title = _result_title(ev.result)
         self._add(Collapsible(Static(Text(body)), title=title, collapsed=True))
-        self._busy("thinking…")
+        self._busy("working…")
 
     def _on_notice(self, ev: Notice) -> None:
         self._end_text()
         self._add(Static(Text(f"• {ev.text}"), classes="notice"))
-        self._busy("thinking…")
+        self._busy("working…")
 
     def _on_turn_end(self, ev: TurnEnd) -> None:
         self._end_text()

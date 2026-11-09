@@ -93,11 +93,18 @@ def _connect_mcp(root: Path) -> mcp_client.McpHub | None:
     return hub
 
 
-def _title(s: AgentSession, ext: Extensions) -> str:
+def _think_label(think: dict) -> list[str]:
+    """``["thinking off"]`` / ``["thinking on"]`` when set; nothing for the model's default."""
+    enabled = think.get("chat_template_kwargs", {}).get("enable_thinking")
+    return [] if enabled is None else [f"thinking {'on' if enabled else 'off'}"]
+
+
+def _title(s: AgentSession, ext: Extensions, think: dict) -> str:
     home = Path.home()
     where = f"~/{s.root.relative_to(home)}" if home in s.root.parents else str(s.root)
     resumed = f" · resumed ({len(s.messages)} messages)" if s.messages else ""
-    extras = [f"{len(ext.skills)} skills"] if ext.skills else []
+    extras = _think_label(think)
+    extras += [f"{len(ext.skills)} skills"] if ext.skills else []
     extras += [f"{len(ext.hub.connected())} MCP"] if ext.hub and ext.hub.connected() else []
     tail = f" · {' · '.join(extras)}" if extras else ""
     return f"tai agent · {s.model.name} · {where} · session {s.sid}{resumed}{tail}"
@@ -137,7 +144,7 @@ def _build_app(app, s: AgentSession, ext: Extensions, req: AgentRequest) -> Agen
                          extra=think, tools=ext.tools)
     transcript = Transcript(s.messages, on_message=lambda msg: app.store.add_raw_message(s.sid, msg))
     agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver
-    info = AppInfo(_title(s, ext), initial=req.text, on_clear=lambda: app.store.clear_messages(s.sid),
+    info = AppInfo(_title(s, ext, think),initial=req.text, on_clear=lambda: app.store.clear_messages(s.sid),
                    skills=[(k.name, k.description) for k in ext.skills], servers=ext.server_lines(),
                    history=app.store.prompts(s.root), on_prompt=lambda text: app.store.add_prompt(s.root, text))
     return AgentApp(agent, info)
