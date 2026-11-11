@@ -131,6 +131,10 @@ class TiinyClient:
     def stop(self, model_id: str) -> dict:
         return self._json("POST", f"/api/v1/models/{model_id}/stop")
 
+    def server_version(self) -> dict:
+        """Client mode: the `tai serve` it goes through ({version, build})."""
+        return self._json("GET", "/_tai/version")
+
     # -- device ----------------------------------------------------------
     def sys_status(self) -> dict:
         """CPU, memory, NPU and disk utilisation."""

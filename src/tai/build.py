@@ -31,6 +31,9 @@ def build() -> str | None:
     return f"build {count} ({commit}{', + changes' if dirty else ''})"
 
 
+def describe(version: str, build_: str | None) -> str:
+    return f"version {version}" + (f", {build_}" if build_ else "")
+
+
 def version_text(version: str) -> str:
-    extra = build()
-    return f"tai, version {version}" + (f", {extra}" if extra else "")
+    return f"tai, {describe(version, build())}"

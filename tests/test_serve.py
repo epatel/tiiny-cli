@@ -164,3 +164,27 @@ def test_device_errors_come_back_unchanged(stack):
     url, _, _ = stack
     with pytest.raises(TiinyError, match="404.*nope"):
         client(url).task3d("missing")
+
+
+def test_server_reports_its_version_with_the_key_only(stack, monkeypatch):
+    url, seen, _ = stack
+    v = client(url + "/tai").server_version()  # under an nginx prefix too
+    assert set(v) == {"version", "build"} and seen == []  # answered by the server, not the device
+    with pytest.raises(TiinyError):
+        client(url, key="wrong").server_version()
+
+
+def test_version_shows_the_server_in_client_mode(stack, monkeypatch):
+    from click.testing import CliRunner
+
+    import tai.build as build_mod
+    import tai.cli as cli_mod
+    import tai.serve as serve_mod
+
+    url, _, _ = stack
+    monkeypatch.setattr(build_mod, "build", lambda: "build 47 (c4251a7)")
+    monkeypatch.setenv("TAI_API_KEY", API_KEY)
+    out = CliRunner().invoke(cli_mod.cli, ["--url", url, "--version"]).output
+    assert out.splitlines()[0].endswith("build 47 (c4251a7)")
+    assert out.splitlines()[1].startswith("server: tai serve version ") and url in out
+    assert serve_mod.device_path("/tai/_tai/version") == serve_mod.VERSION_PATH

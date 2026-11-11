@@ -50,16 +50,17 @@ def _authorized(request: web.Request, key: str) -> bool:
     return bool(given) and hmac.compare_digest(given.encode(), key.encode())
 
 
+VERSION_PATH = "/_tai/version"  # the server's own version (needs the key); never a device route
+
+
 def device_path(path: str) -> str | None:
     """The device route in ``path``, ignoring any prefix nginx left in front
-    (``/tai/v1/x`` -> ``/v1/x``); ``/healthz`` for health checks; None for anything else."""
-    if path.endswith("/healthz"):
-        return "/healthz"
-    for route in FORWARDED_PREFIXES:  # /api/v1/ first: it contains /v1/
-        i = path.find(route)
-        if i >= 0:
-            return path[i:]
-    return None
+    (``/tai/v1/x`` -> ``/v1/x``); ``/healthz`` for health checks, VERSION_PATH for the
+    server's version; None for anything else."""
+    own = next((p for p in ("/healthz", VERSION_PATH) if path.endswith(p)), None)
+    starts = ((path.find(route), route) for route in FORWARDED_PREFIXES)  # /api/v1/ first: it contains /v1/
+    at = next((i for i, _ in starts if i >= 0), -1)
+    return own or (path[at:] if at >= 0 else None)
 
 
 def _headers(headers, drop: set[str]) -> dict[str, str]:
@@ -68,6 +69,7 @@ def _headers(headers, drop: set[str]) -> dict[str, str]:
 
 def make_app(cfg: ServeConfig, log: Log = lambda line: print(line, file=sys.stderr)) -> web.Application:
     device_auth = {"Authorization": f"Bearer {cfg.device.token}"}
+    about = server_version()  # once: after a `git pull` the process still runs the old code
 
     async def session_ctx(app: web.Application):
         # No overall or read timeout: model loads, 3D stages and long answers take minutes.
@@ -82,6 +84,8 @@ def make_app(cfg: ServeConfig, log: Log = lambda line: print(line, file=sys.stde
             return web.json_response({"ok": True})
         if not _authorized(request, cfg.api_key):
             return _error(401, "Missing or wrong API key (TAI_API_KEY).")
+        if path == VERSION_PATH:
+            return web.json_response(about)
         if path is None:
             return _error(404, f"tai serve only forwards {', '.join(FORWARDED_PREFIXES)}")
         started = time.monotonic()
@@ -118,6 +122,15 @@ def make_app(cfg: ServeConfig, log: Log = lambda line: print(line, file=sys.stde
     return app
 
 
+def server_version() -> dict:
+    from tai import __version__
+    from tai.build import build
+
+    return {"version": __version__, "build": build()}
+
+
 def run(cfg: ServeConfig, port: int, log: Log) -> None:
-    log(f"tai serve on http://127.0.0.1:{port} -> device {cfg.device.device}")
+    v = server_version()
+    built = f", {v['build']}" if v["build"] else ""
+    log(f"tai serve {v['version']}{built} on http://127.0.0.1:{port} -> device {cfg.device.device}")
     web.run_app(make_app(cfg, log), host="127.0.0.1", port=port, print=None, access_log=None)

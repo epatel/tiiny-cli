@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import click
+import httpx
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
@@ -138,7 +139,8 @@ class TaiGroup(click.Group):
 
 @click.group(cls=TaiGroup)
 @click.option("--device", envvar="TAI_DEVICE", help="Device address (default: from tiiny config).")
-@click.option("--url", help="Use a `tai serve` at this URL instead of the device (or set TAI_URL; key: TAI_API_KEY).")
+@click.option("--url", is_eager=True,  # eager: parsed before --version, which shows the server
+              help="Use a `tai serve` at this URL instead of the device (or set TAI_URL; key: TAI_API_KEY).")
 @click.option("-y", "--yes", is_flag=True, envvar="TAI_YES", help="Don't ask before unloading models.")
 @click.option("--version", is_flag=True, expose_value=False, is_eager=True, callback=lambda ctx, _p, v: _version(ctx, v),
               help="Show the version (and the build, from git) and exit.")
@@ -156,7 +158,28 @@ def _version(ctx: click.Context, given: bool) -> None:
     if given and not ctx.resilient_parsing:
         from tai.build import version_text
         click.echo(version_text(__version__))
+        server = _server_version(ctx.params.get("url"))
+        if server:
+            click.echo(f"server: {server}")
         ctx.exit()
+
+
+def _server_version(url: str | None) -> str | None:
+    """Client mode: what the `tai serve` in between runs. None when talking to the device directly."""
+    from tai.build import describe
+
+    try:
+        settings = load_settings(url=url)
+    except ConfigError:
+        return None
+    if not settings.via_server:
+        return None
+    try:
+        v = TiinyClient(settings).server_version()
+    except (TiinyError, httpx.HTTPError) as e:
+        old = str(e).startswith("HTTP 404")  # a server from before this endpoint
+        return "an older tai serve (no version endpoint)" if old else f"unknown ({e})"
+    return f"tai serve {describe(v.get('version', '?'), v.get('build'))} at {settings.device}"
 
 
 def main():
