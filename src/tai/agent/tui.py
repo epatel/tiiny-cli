@@ -40,7 +40,7 @@ from tai.models import ResolveError
 RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
 
 HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · ↑/↓ earlier prompts · drag to select, Ctrl+C copy · Esc interrupt · Ctrl+C (nothing selected) quit
-**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
+**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/think on|off` reasoning from the next request · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
 
 
@@ -63,6 +63,7 @@ class AppInfo:
     history: list[str] = field(default_factory=list)  # earlier prompts in this folder, oldest first
     on_prompt: Callable[[str], None] = lambda text: None  # saves a typed prompt to the history
     context_window: int = 0  # the agent model's context size in tokens; 0 if unknown
+    can_think: bool = False  # the model's thinking can be switched (/think)
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -296,7 +297,7 @@ class AgentApp(App):
 
     # -- layout ----------------------------------------------------------
     def compose(self) -> ComposeResult:
-        yield Static(self.info.title, id="title")
+        yield Static(self._title(), id="title")
         yield VerticalScroll(id="log")
         yield Static("", id="status")
         yield PromptArea(PromptHistory(self.info.history), id="prompt")
@@ -392,10 +393,36 @@ class AgentApp(App):
             actions[cmd]()
         elif cmd == "tiiny":
             self._tiiny(arg)
+        elif cmd == "think":
+            self._think_cmd(arg.strip().lower())
         elif cmd in dict(self.info.skills):
             self._submit(f"Use the `{cmd}` skill." + (f" {arg}" if arg else ""))
         else:
             self.notify(f"Unknown command /{cmd} — try /help", severity="warning")
+
+    # -- thinking --------------------------------------------------------
+    @property
+    def thinking(self) -> bool | None:
+        """On/off as sent with each request; None: not sent (the model's default)."""
+        return self.agent.config.extra.get("chat_template_kwargs", {}).get("enable_thinking")
+
+    def _title(self) -> str:
+        mode = self.thinking
+        return self.info.title + ("" if mode is None else f" · thinking {'on' if mode else 'off'}")
+
+    def _think_cmd(self, arg: str) -> None:
+        """/think on|off: switch reasoning for this run, from the next model request."""
+        if not self.info.can_think:
+            self.notify("This model's thinking can't be switched.", severity="warning")
+        elif arg not in ("on", "off"):
+            now = {None: "the model's default", True: "on", False: "off"}[self.thinking]
+            self.notify(f"Thinking is {now}. Use /think on or /think off.")
+        else:
+            extra = self.agent.config.extra
+            extra["chat_template_kwargs"] = {**extra.get("chat_template_kwargs", {}), "enable_thinking": arg == "on"}
+            self.query_one("#title", Static).update(self._title())
+            when = " from the next step" if self.busy else ""
+            self.notify(f"Thinking {arg}{when} (this run; `tai config set agent.think` for the default).")
 
     def _tiiny(self, arg: str) -> None:
         sub, _ = DeviceCommands.split(arg)

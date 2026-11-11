@@ -524,3 +524,38 @@ def test_status_line_shows_prompt_reading_and_tool_call_writing(tmp_path):
             assert "preparing write… · 4.1K chars" in status()
             await pilot.pause(0)
     run(main())
+
+
+def test_think_command_switches_reasoning_for_the_next_request(tmp_path):
+    async def main():
+        client = FakeClient(text_reply("a"), text_reply("b"))
+        client.requests = []
+        stream = client.chat_stream
+
+        def recording(model, messages, **kw):
+            client.requests.append(kw)
+            return stream(model, messages, **kw)
+        client.chat_stream = recording
+        cfg = AgentConfig(model_id="m", system="SYS", ctx=ToolContext(root=tmp_path.resolve()),
+                          extra={"chat_template_kwargs": {"enable_thinking": False}})
+        app = AgentApp(Agent(client, cfg, lambda *a: Decision.DENY, Transcript([])), AppInfo("t", can_think=True))
+        async with app.run_test(size=(100, 30)) as pilot:
+            title = lambda: str(app.query_one("#title", Static).content)
+            assert title() == "t · thinking off"
+            await send(pilot, "one")
+            await wait_until(pilot, lambda: not app.busy)
+            await send(pilot, "/think on")
+            assert title() == "t · thinking on"
+            await send(pilot, "two")
+            await wait_until(pilot, lambda: not app.busy)
+            assert [r["chat_template_kwargs"]["enable_thinking"] for r in client.requests] == [False, True]
+    run(main())
+
+
+def test_think_command_needs_a_switchable_model(tmp_path):
+    async def main():
+        app = make_app(tmp_path)  # can_think defaults to False
+        async with app.run_test(size=(100, 30)) as pilot:
+            await send(pilot, "/think on")
+            assert app.thinking is None and "thinking" not in str(app.query_one("#title", Static).content)
+    run(main())

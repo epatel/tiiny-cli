@@ -75,13 +75,3 @@ def test_agent_thinking_has_its_own_setting(app):
     assert agent() == off and chat() == on           # agent.think wins for the agent only
     assert agent(flag=True) == on                    # --think beats both
     assert _think_extra(app, CODER, True, settings=AGENT_THINK_SETTINGS) == {}  # can't toggle: nothing sent
-
-
-def test_title_shows_the_thinking_mode(tmp_path):
-    from tai.agent.command import AgentSession, Extensions, _title
-
-    s = AgentSession(1, CODER, [], tmp_path)
-    ext = Extensions({}, "", [], None)
-    off = {"chat_template_kwargs": {"enable_thinking": False}}
-    assert "thinking off" in _title(s, ext, off)
-    assert "· thinking" not in _title(s, ext, {})  # model default: not shown
