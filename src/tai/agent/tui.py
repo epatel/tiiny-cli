@@ -28,7 +28,7 @@ from textual.widgets import Collapsible, Footer, Static, TextArea
 from textual.widgets import Markdown as MarkdownView
 
 from tai.agent.loop import (Agent, Decision, Event, Notice, ReasoningDelta, TextDelta, ToolEnd,
-                            ToolStart, TurnEnd, Usage)
+                            PromptProgress, ToolCallProgress, ToolStart, TurnEnd, Usage)
 from tai.agent.device import MUTATING, DeviceCommands
 from tai.models import short_tokens
 from tai.agent.history import PromptHistory
@@ -496,9 +496,20 @@ class AgentApp(App):
         ev = message.event
         handler = {TextDelta: self._on_text, ReasoningDelta: self._on_reasoning, ToolStart: self._on_tool_start,
                    ToolEnd: self._on_tool_end, TurnEnd: self._on_turn_end, Notice: self._on_notice,
-                   Usage: self._on_usage}[type(ev)]
+                   Usage: self._on_usage, PromptProgress: self._on_prompt_progress,
+                   ToolCallProgress: self._on_tool_call_progress}[type(ev)]
         handler(ev)
         self.log_view.scroll_end(animate=False)
+
+    def _on_prompt_progress(self, ev: PromptProgress) -> None:
+        if ev.done >= ev.total:
+            self._busy("working…")
+            return
+        pct = ev.done * 100 // max(ev.total, 1)
+        self._busy("reading the prompt…", f"{pct}% of {short_tokens(ev.total)} new tokens")
+
+    def _on_tool_call_progress(self, ev: ToolCallProgress) -> None:
+        self._busy(f"preparing {ev.name or 'a tool call'}…", f"{short_tokens(ev.chars)} chars")
 
     def _on_usage(self, ev: Usage) -> None:
         self.tokens = ev.total

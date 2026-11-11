@@ -5,7 +5,7 @@ import json
 import pytest
 
 from tai.agent.loop import (DENIED, Agent, AgentConfig, Decision, Notice, ReasoningDelta, TextDelta, ToolEnd,
-                            ToolStart, Transcript, TurnEnd, Usage)
+                            PromptProgress, ToolCallProgress, ToolStart, Transcript, TurnEnd, Usage)
 from tai.agent.tools import ToolContext
 from tai.client import TiinyError
 
@@ -227,3 +227,22 @@ def test_usage_from_the_last_chunk_is_reported(project):
     events = list(agent.run("hello"))
     used = [e for e in events if isinstance(e, Usage)]
     assert used == [Usage(1200, 34)] and used[0].total == 1234
+
+
+def test_prompt_progress_counts_only_uncached_tokens(project):
+    progress = [{"choices": [{"delta": {"role": "assistant"}}],
+                 "prompt_progress": {"total": 26109, "cache": 24149, "processed": p}} for p in (24149, 25849)]
+    agent, client, _ = make(project, progress + text_reply("ok"))
+    events = list(agent.run("hi"))
+    assert [e for e in events if isinstance(e, PromptProgress)] == [PromptProgress(0, 1960), PromptProgress(1700, 1960)]
+    assert client.requests[0]["return_progress"] is True
+    assert agent.messages[-1] == {"role": "assistant", "content": "ok"}
+
+
+def test_tool_call_progress_while_arguments_stream(project):
+    agent, _, _ = make(project, tool_reply("read", {"path": "a.txt"}), text_reply("done"))
+    events = list(agent.run("read it"))
+    progress = [e for e in events if isinstance(e, ToolCallProgress)]
+    assert [p.name for p in progress] == ["read"] * 3
+    assert [p.chars for p in progress] == [0, 5, len('{"path": "a.txt"}')]
+    assert events.index(progress[-1]) < next(i for i, e in enumerate(events) if isinstance(e, ToolStart))

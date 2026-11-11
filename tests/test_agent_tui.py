@@ -506,3 +506,21 @@ def test_status_line_shows_context_used(tmp_path):
             await pilot.pause(0.05)
             assert "tokens" not in str(app.query_one("#status", Static).content)
     run(main())
+
+
+def test_status_line_shows_prompt_reading_and_tool_call_writing(tmp_path):
+    from tai.agent.loop import PromptProgress, ToolCallProgress
+
+    async def main():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            def status():
+                return str(app.query_one("#status", Static).content)
+            app._on_prompt_progress(PromptProgress(980, 1960))
+            assert "reading the prompt… · 50% of 2.0K new tokens" in status()
+            app._on_prompt_progress(PromptProgress(1960, 1960))
+            assert "working…" in status()
+            app._on_tool_call_progress(ToolCallProgress("write", 4100))
+            assert "preparing write… · 4.1K chars" in status()
+            await pilot.pause(0)
+    run(main())

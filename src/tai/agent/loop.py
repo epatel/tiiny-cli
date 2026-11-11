@@ -79,7 +79,24 @@ class Usage:
         return self.prompt + self.completion
 
 
-Event = TextDelta | ReasoningDelta | ToolStart | ToolEnd | TurnEnd | Notice | Usage
+@dataclass
+class PromptProgress:
+    """The model reading the prompt, before its first token. Counts only tokens it must
+    read now: the device reuses what it already read in the previous step (its cache)."""
+    done: int
+    total: int
+
+
+@dataclass
+class ToolCallProgress:
+    """A tool call being written: its arguments (e.g. a whole file for `write`) stream in
+    before the call can run."""
+    name: str
+    chars: int
+
+
+Event = (TextDelta | ReasoningDelta | ToolStart | ToolEnd | TurnEnd | Notice | Usage | PromptProgress
+         | ToolCallProgress)
 Approver = Callable[[Tool, dict, Preview], Decision]
 
 
@@ -135,8 +152,23 @@ def model_missing(e: TiinyError) -> bool:
     return "is not loaded" in text or "does not exist or is not running" in text or "model_not_found" in text
 
 
-def _usage_events(chunk: dict) -> Iterator[Event]:
-    """The device puts token counts in the last chunk of every streamed reply."""
+def _chunk_events(chunk: dict, acc: _Accumulator) -> Iterator[Event]:
+    """Events for one streamed chunk; its delta also goes into ``acc``."""
+    yield from _progress_events(chunk)
+    delta = (chunk.get("choices") or [{}])[0].get("delta") or {}
+    acc.add(delta)
+    yield from _delta_events(delta)
+    if delta.get("tool_calls"):
+        call = acc.calls[max(acc.calls)]["function"]
+        yield ToolCallProgress(call["name"], len(call["arguments"]))
+
+
+def _progress_events(chunk: dict) -> Iterator[Event]:
+    """Prompt reading progress (before the first token) and token counts (in the last chunk)."""
+    p = chunk.get("prompt_progress")
+    if p:
+        cached = p.get("cache") or 0
+        yield PromptProgress((p.get("processed") or 0) - cached, (p.get("total") or 0) - cached)
     u = chunk.get("usage")
     if u:
         yield Usage(u.get("prompt_tokens") or 0, u.get("completion_tokens") or 0)
@@ -216,15 +248,14 @@ class Agent:
         acc = _Accumulator()
         convo = [{"role": "system", "content": self.config.system}, *self.messages]
         tools = [t.spec() for t in self.config.tools.values()]
-        stream = self.client.chat_stream(self.config.model_id, convo, tools=tools, **self.config.extra)
+        # return_progress: the device then streams prompt_progress while it reads the prompt
+        stream = self.client.chat_stream(self.config.model_id, convo, tools=tools, return_progress=True,
+                                         **self.config.extra)
         with closing(stream):  # closing the generator ends the HTTP stream on interrupt
             for chunk in stream:
                 if self._cancel.is_set():
                     break
-                yield from _usage_events(chunk)
-                delta = (chunk.get("choices") or [{}])[0].get("delta") or {}
-                acc.add(delta)
-                yield from _delta_events(delta)
+                yield from _chunk_events(chunk, acc)
         return acc.message()
 
     # -- tools -----------------------------------------------------------
