@@ -140,7 +140,8 @@ class TaiGroup(click.Group):
 @click.option("--device", envvar="TAI_DEVICE", help="Device address (default: from tiiny config).")
 @click.option("--url", help="Use a `tai serve` at this URL instead of the device (or set TAI_URL; key: TAI_API_KEY).")
 @click.option("-y", "--yes", is_flag=True, envvar="TAI_YES", help="Don't ask before unloading models.")
-@click.version_option(__version__, prog_name="tai")
+@click.option("--version", is_flag=True, expose_value=False, is_eager=True, callback=lambda ctx, _p, v: _version(ctx, v),
+              help="Show the version (and the build, from git) and exit.")
 @click.pass_context
 def cli(ctx, device, url, yes):
     """Use every model on your Tiiny device. Models are loaded on demand;
@@ -148,6 +149,14 @@ def cli(ctx, device, url, yes):
 
     Talks to the device directly, or through `tai serve` when --url / TAI_URL is set."""
     ctx.obj = App(device, yes, url)
+
+
+def _version(ctx: click.Context, given: bool) -> None:
+    """Asks git only when --version is given, not on every command."""
+    if given and not ctx.resilient_parsing:
+        from tai.build import version_text
+        click.echo(version_text(__version__))
+        ctx.exit()
 
 
 def main():

@@ -113,6 +113,8 @@ make check   # tests + code-health delta; run before committing
 make help    # all targets
 ```
 
+`tai --version` adds the build from git when tai runs from its checkout: `build 47 (9138ee6)`, the number of commits and the commit, plus `+ changes` when the tracked files differ from it.
+
 See `CLAUDE.md` and `cards/` for how the device API works and how swapping is decided.
 
 ## License
