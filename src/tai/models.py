@@ -39,6 +39,7 @@ class Model:
     supported: list[str] = field(default_factory=list)  # e.g. ["Tool Use", "Reasoning"]
     last_used: float = 0.0  # from running instances (use_time); 0 if unknown
     active: int = 0  # active_request_count
+    context: int = 0  # context_window in tokens (chat and embedding models); 0 if not reported
 
     @property
     def task(self) -> str:
@@ -67,12 +68,25 @@ class Model:
             id=d["id"],
             name=d.get("display_name") or d.get("name") or d["id"].split("/")[-1],
             type=d.get("type", ""),
-            npu=int(d.get("npu_usage") or 0),
+            npu=_count(d, "npu_usage"),
             status=d.get("status", ""),
             inputs=[s.strip() for s in (d.get("input") or "").split(",") if s.strip()],
             thinking=d.get("thinking") or {},
             supported=list(d.get("supported") or []),
+            context=_count(d, "context_window"),
         )
+
+
+def _count(d: dict, key: str) -> int:
+    """A numeric catalog field; 0 when missing or null."""
+    return int(d.get(key) or 0)
+
+
+def short_tokens(n: int) -> str:
+    """A token count for a narrow column: 900 -> 900, 1234 -> 1.2K, 131072 -> 131K."""
+    if n < 1000:
+        return str(n)
+    return f"{n / 1000:.1f}K" if n < 10_000 else f"{n // 1000}K"
 
 
 class ResolveError(LookupError):

@@ -27,7 +27,7 @@ from tai.db import Store
 from tai.info import catalog_row, render, reported, reports_options
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
-from tai.models import Model, ResolveError, build_catalog, resolve
+from tai.models import Model, ResolveError, build_catalog, resolve, short_tokens
 from tai.options import (AgentRequest, AskOutput, AsrOptions, ChatOptions, ImageOptions, Prompt,
                          Question, SavedFile, SessionRef, TtsConfig, bundle, chat_options, extra_option,
                          generator, merge)
@@ -166,16 +166,21 @@ def models_cmd(app: App, as_json):
         out.print_json(json.dumps([m.__dict__ | {"task": m.task} for m in models]))
         return
     t = Table(box=None, header_style="bold")
-    for col in ("", "Name", "Task", "Type", "NPU"):
+    for col in ("", "Name", "Task", "Type", "NPU", "Context"):
         t.add_column(col, no_wrap=True)
     t.add_column("Model ID", overflow="fold")
     for m in sorted(models, key=lambda m: (m.task, m.name)):
-        mark = "[green]●[/]" if m.loaded else ("[yellow]◐[/]" if m.status not in ("downloaded", "") else "[dim]○[/]")
-        star = " *" if defaults.get(f"default.{m.task}") == m.id else ""
-        t.add_row(mark, m.name + star, m.task, m.type, f"{m.npu}%", f"[dim]{m.id}[/]")
+        t.add_row(*_model_row(m, is_default=defaults.get(f"default.{m.task}") == m.id))
     out.print(t)
     used = sum(m.npu for m in models if m.loaded)
     out.print(f"[dim]● loaded  ○ not loaded  * your default — NPU in use: {used}%[/]")
+
+
+def _model_row(m: Model, is_default: bool) -> tuple[str, ...]:
+    mark = "[green]●[/]" if m.loaded else ("[yellow]◐[/]" if m.status not in ("downloaded", "") else "[dim]○[/]")
+    context = short_tokens(m.context) if m.context else ""
+    star = " *" if is_default else ""
+    return mark, m.name + star, m.task, m.type, f"{m.npu}%", context, f"[dim]{m.id}[/]"
 
 
 @cli.command()

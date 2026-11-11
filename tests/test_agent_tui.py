@@ -488,3 +488,21 @@ def test_permission_keys_stay_visible_for_a_big_diff_in_a_short_terminal(tmp_pat
         assert keys.height == 1 and inside  # the y/a/n line is laid out inside the dialog
         assert bottom <= 30
     run(main())
+
+
+def test_status_line_shows_context_used(tmp_path):
+    usage = {"choices": [], "usage": {"prompt_tokens": 13000, "completion_tokens": 107}}
+
+    async def main():
+        cfg = AgentConfig(model_id="m", system="SYS", ctx=ToolContext(root=tmp_path.resolve()))
+        agent = Agent(FakeClient(text_reply("hi") + [usage]), cfg, lambda *a: Decision.DENY, Transcript([]))
+        app = AgentApp(agent, AppInfo("t", context_window=131072))
+        async with app.run_test(size=(100, 30)) as pilot:
+            await send(pilot, "hello")
+            await wait_until(pilot, lambda: not app.busy)
+            status = str(app.query_one("#status", Static).content)
+            assert "ready" in status and "13K / 131K tokens (9%)" in status
+            await pilot.press("ctrl+l")
+            await pilot.pause(0.05)
+            assert "tokens" not in str(app.query_one("#status", Static).content)
+    run(main())

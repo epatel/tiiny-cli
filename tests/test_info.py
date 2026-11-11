@@ -13,7 +13,7 @@ MODELS = [
     {"id": "k2/Voice", "display_name": "Voice", "type": "Text-to-Speech", "npu_usage": 10,
      "status": "running"},
     {"id": "q/Coder", "display_name": "Coder", "type": "Text Generation", "npu_usage": 50,
-     "status": "downloaded", "input": "Text", "supported": ["Tool Use"]},
+     "status": "downloaded", "input": "Text", "supported": ["Tool Use"], "context_window": 131072},
     {"id": "z/Image", "display_name": "Image", "type": "Text-to-Image", "npu_usage": 20,
      "status": "running"},
     {"id": "m/Trellis", "display_name": "Trellis", "type": "Image-to-3D", "npu_usage": 30,
@@ -73,6 +73,12 @@ def test_unloaded_model_asks_before_loading(fake):
 
     r = run("info", "coder", input="y\n")
     assert fake.loads == ["q/Coder"] and fake.asked == ["q/Coder"] and "reported" in r.output
+
+
+def test_context_window_in_info_and_models(fake):
+    assert "context_window: 131072" in run("info", "coder", "--no-load").output
+    assert "context_window" not in run("info", "voice").output  # not reported: not shown
+    assert "131K" in run("models").output
 
 
 def test_no_load_and_yes(fake):

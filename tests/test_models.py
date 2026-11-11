@@ -115,3 +115,8 @@ def test_greedy_fallback_for_many_models(monkeypatch):
     monkeypatch.setattr(tai.models, "MAX_EXACT", 1)
     cat = loaded(("A", 30, 1), ("B", 5, 2), ("C", 10, 3))  # 55 free, need 70 -> smallest first: B, C
     assert [m.name for m in plan_swap(cat + [target(70)], target(70)).unload] == ["B", "C"]
+
+
+def test_short_tokens():
+    from tai.models import short_tokens
+    assert [short_tokens(n) for n in (900, 1234, 8192, 131072)] == ["900", "1.2K", "8.2K", "131K"]

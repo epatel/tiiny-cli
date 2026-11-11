@@ -28,8 +28,9 @@ from textual.widgets import Collapsible, Footer, Static, TextArea
 from textual.widgets import Markdown as MarkdownView
 
 from tai.agent.loop import (Agent, Decision, Event, Notice, ReasoningDelta, TextDelta, ToolEnd,
-                            ToolStart, TurnEnd)
+                            ToolStart, TurnEnd, Usage)
 from tai.agent.device import MUTATING, DeviceCommands
+from tai.models import short_tokens
 from tai.agent.history import PromptHistory
 from tai.agent.tools import Preview, Tool
 from tai.client import TiinyError
@@ -61,6 +62,7 @@ class AppInfo:
     open_viewer: Callable[[], str] | None = None  # starts the browser viewer, opens it, returns its URL
     history: list[str] = field(default_factory=list)  # earlier prompts in this folder, oldest first
     on_prompt: Callable[[str], None] = lambda text: None  # saves a typed prompt to the history
+    context_window: int = 0  # the agent model's context size in tokens; 0 if unknown
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -268,6 +270,8 @@ class AgentApp(App):
         self._pending: threading.Event | None = None  # a worker waiting on a modal
         self.device_busy = False  # a /tiiny command is running
         self._activity: Activity | None = None
+        self._idle = ""  # the plain status shown when nothing is going on
+        self.tokens = 0  # context used by the last model request (0 until the first one)
         agent.reload_model = self._reload_agent_model
 
     # -- clipboard -------------------------------------------------------
@@ -317,7 +321,18 @@ class AgentApp(App):
     def _status(self, text: str) -> None:
         """A plain status (idle states); ends the current activity."""
         self._activity = None
-        self.query_one("#status", Static).update(text)
+        self._idle = text
+        self._show(text)
+
+    def _show(self, text: str) -> None:
+        self.query_one("#status", Static).update(" · ".join(p for p in (text, self._token_text()) if p))
+
+    def _token_text(self) -> str:
+        if not self.tokens:
+            return ""
+        window = self.info.context_window
+        used = f"{short_tokens(self.tokens)} / {short_tokens(window)} tokens ({self.tokens * 100 // window}%)" if window else ""
+        return used or f"{short_tokens(self.tokens)} tokens"
 
     def _busy(self, label: str, detail: str = "") -> None:
         """Show an ongoing activity; the elapsed time keeps counting while the label stays the same."""
@@ -333,7 +348,7 @@ class AgentApp(App):
             return
         secs = int(time.monotonic() - a.started)
         parts = [f"◐ {a.label}", a.detail, f"{secs}s" if secs else ""]
-        self.query_one("#status", Static).update(" · ".join(p for p in parts if p))
+        self._show(" · ".join(p for p in parts if p))
 
     def _replay(self, messages: list[dict]) -> None:
         """Show a resumed conversation: user text, assistant text, tool-call labels."""
@@ -480,9 +495,17 @@ class AgentApp(App):
     def on_agent_event(self, message: AgentEvent) -> None:
         ev = message.event
         handler = {TextDelta: self._on_text, ReasoningDelta: self._on_reasoning, ToolStart: self._on_tool_start,
-                   ToolEnd: self._on_tool_end, TurnEnd: self._on_turn_end, Notice: self._on_notice}[type(ev)]
+                   ToolEnd: self._on_tool_end, TurnEnd: self._on_turn_end, Notice: self._on_notice,
+                   Usage: self._on_usage}[type(ev)]
         handler(ev)
         self.log_view.scroll_end(animate=False)
+
+    def _on_usage(self, ev: Usage) -> None:
+        self.tokens = ev.total
+        if self._activity is None:
+            self._show(self._idle)
+        else:
+            self._render_activity()
 
     def _on_text(self, ev: TextDelta) -> None:
         if self._text is None:
@@ -550,6 +573,7 @@ class AgentApp(App):
         self.agent.clear()
         self.info.on_clear()
         self.log_view.remove_children()
+        self.tokens = 0
         self._status("conversation cleared — ready")
 
     async def action_quit(self) -> None:

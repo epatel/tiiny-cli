@@ -5,7 +5,7 @@ import json
 import pytest
 
 from tai.agent.loop import (DENIED, Agent, AgentConfig, Decision, Notice, ReasoningDelta, TextDelta, ToolEnd,
-                            ToolStart, Transcript, TurnEnd)
+                            ToolStart, Transcript, TurnEnd, Usage)
 from tai.agent.tools import ToolContext
 from tai.client import TiinyError
 
@@ -219,3 +219,11 @@ def test_without_reload_hook_or_for_other_errors_no_reload(project):
     agent, _, _ = make(project, TiinyError("HTTP 500: boom"))
     agent.reload_model = lambda: pytest.fail("should not reload")
     assert list(agent.run("hi"))[-1] == TurnEnd("error", "HTTP 500: boom")
+
+
+def test_usage_from_the_last_chunk_is_reported(project):
+    usage = {"choices": [], "usage": {"prompt_tokens": 1200, "completion_tokens": 34, "total_tokens": 1234}}
+    agent, _, _ = make(project, text_reply("hi") + [usage])
+    events = list(agent.run("hello"))
+    used = [e for e in events if isinstance(e, Usage)]
+    assert used == [Usage(1200, 34)] and used[0].total == 1234

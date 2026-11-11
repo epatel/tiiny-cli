@@ -67,7 +67,19 @@ class Notice:
     text: str
 
 
-Event = TextDelta | ReasoningDelta | ToolStart | ToolEnd | TurnEnd | Notice
+@dataclass
+class Usage:
+    """Token counts the device reports at the end of each model request. ``total`` is the
+    whole conversation as the model saw it plus its reply: how full the context is."""
+    prompt: int
+    completion: int
+
+    @property
+    def total(self) -> int:
+        return self.prompt + self.completion
+
+
+Event = TextDelta | ReasoningDelta | ToolStart | ToolEnd | TurnEnd | Notice | Usage
 Approver = Callable[[Tool, dict, Preview], Decision]
 
 
@@ -121,6 +133,13 @@ def model_missing(e: TiinyError) -> bool:
     """The device's ways of saying a model isn't loaded (404 model_not_found)."""
     text = str(e)
     return "is not loaded" in text or "does not exist or is not running" in text or "model_not_found" in text
+
+
+def _usage_events(chunk: dict) -> Iterator[Event]:
+    """The device puts token counts in the last chunk of every streamed reply."""
+    u = chunk.get("usage")
+    if u:
+        yield Usage(u.get("prompt_tokens") or 0, u.get("completion_tokens") or 0)
 
 
 def _delta_events(delta: dict) -> Iterator[Event]:
@@ -202,6 +221,7 @@ class Agent:
             for chunk in stream:
                 if self._cancel.is_set():
                     break
+                yield from _usage_events(chunk)
                 delta = (chunk.get("choices") or [{}])[0].get("delta") or {}
                 acc.add(delta)
                 yield from _delta_events(delta)

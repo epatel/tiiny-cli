@@ -32,7 +32,8 @@ def reports_options(m: Model) -> bool:
 
 def catalog_row(m: Model) -> dict:
     row = {"id": m.id, "name": m.name, "type": m.type, "task": m.task, "npu": f"{m.npu}%",
-           "status": m.status, "inputs": m.inputs, "supported": m.supported}
+           "status": m.status, "inputs": m.inputs, "supported": m.supported,
+           "context_window": m.context or None}
     if m.thinking.get("supported"):
         row["thinking"] = m.thinking
     return {k: v for k, v in row.items() if v not in ([], "", None)}

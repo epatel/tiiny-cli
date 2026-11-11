@@ -10,11 +10,11 @@ Use every model on your [Tiiny](https://www.tiiny.ai/) from the terminal, over W
 
 ```
 $ tai models
-    Name                  Task   Type                NPU  Model ID
- ○  TRELLIS.2-4B          3d     Image-to-3D         6%   microsoft/TRELLIS.2-4B
- ○  Qwen3-ASR-1.7B        asr    ASR                 7%   Qwen/Qwen3-ASR-1.7B
- ●  Qwen3-Coder-Next      chat   Text Generation     94%  Qwen/Qwen3-Coder-Next
- ○  Qwen3.6-35B-A3B       chat   Image-Text-to-Text  47%  Qwen/Qwen3.6-35B-A3B
+    Name                  Task   Type                NPU  Context  Model ID
+ ○  TRELLIS.2-4B          3d     Image-to-3D         6%            microsoft/TRELLIS.2-4B
+ ○  Qwen3-ASR-1.7B        asr    ASR                 7%            Qwen/Qwen3-ASR-1.7B
+ ●  Qwen3-Coder-Next      chat   Text Generation     94%  131K     Qwen/Qwen3-Coder-Next
+ ○  Qwen3.6-35B-A3B       chat   Image-Text-to-Text  47%  262K     Qwen/Qwen3.6-35B-A3B
  ...
 ```
 
@@ -59,12 +59,13 @@ tai agent                   # coding agent (full-screen) in the current folder
 tai agent "fix the failing test"   # start with a task; -c continues here
                             # inside: /tiiny status|models|load|unload|restart|shutdown, /view
                             # makes images and video clips; media and questions open in a browser viewer
+                            # the status line shows how full the context is (e.g. 13K / 131K tokens)
 tai mcp                     # MCP servers the agent uses (.mcp.json, ~/.config/tai/mcp.json)
 tai skills                  # skills it can use (.claude/skills, ~/.claude/skills, ~/.config/tai/skills)
 
 tai status                  # NPU usage
 tai load qwen3.6            # pre-load; tai unload --all
-tai info omni               # what a model is + the options it reports (--json, --no-load)
+tai info omni               # what a model is (incl. context window) + the options it reports (--json, --no-load)
 tai config set default.chat coder              # preferred model per task
 tai config set think off                       # default reasoning mode
 tai config set agent.think off                 # the same for tai agent only (also: tai agent --no-think)

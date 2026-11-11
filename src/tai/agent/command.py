@@ -146,7 +146,8 @@ def _build_app(app, s: AgentSession, ext: Extensions, req: AgentRequest) -> Agen
     agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver
     info = AppInfo(_title(s, ext, think),initial=req.text, on_clear=lambda: app.store.clear_messages(s.sid),
                    skills=[(k.name, k.description) for k in ext.skills], servers=ext.server_lines(),
-                   history=app.store.prompts(s.root), on_prompt=lambda text: app.store.add_prompt(s.root, text))
+                   history=app.store.prompts(s.root), on_prompt=lambda text: app.store.add_prompt(s.root, text),
+                   context_window=s.model.context)
     return AgentApp(agent, info)
 
 
