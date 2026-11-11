@@ -469,3 +469,22 @@ def test_view_command_opens_the_viewer(tmp_path):
             await pilot.pause()
             assert "Viewer: http://127.0.0.1:9/tok/" in texts(app)
     run(main())
+
+
+def test_permission_keys_stay_visible_for_a_big_diff_in_a_short_terminal(tmp_path):
+    (tmp_path / "a.txt").write_text("".join(f"line {i}\n" for i in range(80)))
+    new = "".join(f"changed {i}\n" for i in range(80))
+
+    async def main():
+        app = make_app(tmp_path, tool_reply("write", {"path": "a.txt", "content": new}), text_reply("ok"))
+        async with app.run_test(size=(100, 30)) as pilot:
+            await send(pilot, "rewrite")
+            await wait_until(pilot, lambda: isinstance(app.screen, PermissionScreen))
+            await pilot.pause(0.1)
+            keys, box = app.screen.query_one("#perm-keys").region, app.screen.query_one("#permission")
+            inside, bottom = box.content_region.contains_region(keys), box.region.bottom
+            await pilot.press("n")  # answer, so the agent's worker thread can finish
+            await wait_until(pilot, lambda: not app.busy)
+        assert keys.height == 1 and inside  # the y/a/n line is laid out inside the dialog
+        assert bottom <= 30
+    run(main())

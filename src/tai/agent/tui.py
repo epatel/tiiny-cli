@@ -190,6 +190,11 @@ class AgentEvent(Message):
         super().__init__()
 
 
+# Dialog height: at most 85% of the screen; around the preview: border 2 + padding 2 +
+# title 1 + the preview's margin 2 + the key line 1 rows.
+DIALOG_SHARE, DIALOG_CHROME, PREVIEW_MAX = 0.85, 8, 30
+
+
 class PermissionScreen(ModalScreen[Decision]):
     BINDINGS = [Binding("y", "decide('allow')", "Yes"), Binding("a", "decide('always')", "Always"),
                 Binding("n", "decide('deny')", "No"), Binding("escape", "decide('deny')", "No", show=False)]
@@ -208,6 +213,17 @@ class PermissionScreen(ModalScreen[Decision]):
                 yield Static(Syntax(p.body, lexer, theme="ansi_dark", word_wrap=True))
             always = "" if p.outside else "   [bold]a[/] always"
             yield Static(f"[bold]y[/] yes{always}   [bold]n[/] no", id="perm-keys")
+
+    def on_mount(self) -> None:
+        self._fit_body()
+
+    def on_resize(self) -> None:
+        self._fit_body()
+
+    def _fit_body(self) -> None:
+        """Let the preview shrink (and scroll) so the y/a/n line always fits on screen."""
+        room = int(self.size.height * DIALOG_SHARE) - DIALOG_CHROME
+        self.query_one("#perm-body").styles.max_height = max(3, min(PREVIEW_MAX, room))
 
     def action_decide(self, choice: str) -> None:
         decision = Decision(choice)
@@ -230,10 +246,10 @@ class AgentApp(App):
     Collapsible { border: none; padding: 0; margin: 0 0 0 2; }
     #status { height: 1; padding: 0 1; color: $text-muted; }
     #prompt { height: auto; max-height: 12; margin: 0 1; }
-    PermissionScreen { align: center middle; }
+    PermissionScreen, ConfirmScreen { align: center middle; }
     #permission { width: 90%; height: auto; max-height: 85%; border: thick $warning; background: $surface;
                   padding: 1 2; }
-    #perm-body { height: auto; max-height: 30; margin: 1 0; }
+    #perm-body { height: auto; margin: 1 0; }  /* max-height set by PermissionScreen._fit_body */
     """
     BINDINGS = [Binding("escape", "interrupt", "Interrupt"),
                 Binding("ctrl+c", "copy_or_quit", "Copy/Quit", priority=True),

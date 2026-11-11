@@ -26,6 +26,7 @@ flowchart LR
 
 - Reads (read, grep, glob, ls, skill, read-only MCP tools) never ask. **write/edit** (grant group `files`) and **bash** (group `bash`) ask first, showing a unified diff or the command.
 - "Always" (`a`) covers that group for the rest of the session (`Agent.granted`), **except** writes outside the project root (`Preview.outside`). Those ask every time, and the modal doesn't offer "always" for them.
+- The modal's preview (`#perm-body`) gets its max height from the screen (`PermissionScreen._fit_body`, on mount and resize): 85% of the rows minus 8 rows of chrome, capped at 30, and it scrolls. A fixed 30 used to push the y/a/n line off the dialog in terminals under ~45 rows. `ConfirmScreen` is centred like it.
 - A denied call is never run. The model is told `DENIED` and asked not to retry.
 - Every `tool_call` gets a `tool` message, even when interrupted (`INTERRUPTED`). Otherwise the next request is malformed.
 - Tool errors (`ToolError`, bad JSON, unknown tool) go back to the model as `Error: …` results. They never crash the turn. Device errors end the turn with `TurnEnd("error")`.
