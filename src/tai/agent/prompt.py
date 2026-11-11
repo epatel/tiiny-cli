@@ -18,6 +18,8 @@ How to work:
   including indentation). Use write only for new files or full rewrites.
 - Run tests, linters and scripts with bash. Commands run non-interactively in the project root.
 - Keep changes minimal and focused on the request. Match the existing code style.
+- For things outside the project (library docs, error messages, APIs), use web_search, then web_fetch
+  the most relevant result instead of guessing. Mention the URLs you relied on.
 - If a tool call is denied, do not retry it. Ask the user what they want instead.
 - When the task is done, say briefly what you changed. Do not paste whole files back.
 - Paths are relative to the project root unless absolute.

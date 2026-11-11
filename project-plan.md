@@ -53,6 +53,7 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
 - 2026-11-09 — `agent.think` setting + `tai agent --think/--no-think` (user request): thinking for the agent apart from chat, because reasoning can push an agent step past the 10-minute request limit. Prompted by a Qwen3-Coder-Next vs Qwen3.8-27B comparison (cards/agent.md, Model).
 - 2026-11-09 — CI on GitHub Actions (Python 3.10–3.13 + macOS, aihealth gate ≥ 9 except on 3.10, where aihealth can't install), daily pip-audit, CodeQL, OpenSSF Scorecard, Dependabot; same setup as ai-health.
 - 2026-11-11 — Build number (user request): `tai --version` asks git at that moment (commit count on HEAD + short hash + `+ changes`) instead of a pre-commit hook writing a file. tai is installed editable, so the checkout is what runs; a hook isn't shared through git, can't know its own commit's hash, and would rewrite a tracked file on every commit. No build part outside a checkout of tai. In client mode it also shows the `tai serve` build (`/_tai/version`, read once when the server starts).
+- 2026-11-11 — Agent web tools (user choices): `web_search` via DuckDuckGo's HTML page (no key; fragile if they change it) + `web_fetch` (page as text). Both ask first as the `web` group.
 - 2026-11-08 — Chat history is persisted text-only. Images attached in a past turn are not re-sent on resume.
 
 ## Current state / handoff

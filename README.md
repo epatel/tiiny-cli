@@ -59,6 +59,7 @@ tai agent                   # coding agent (full-screen) in the current folder
 tai agent "fix the failing test"   # start with a task; -c continues here
                             # inside: /tiiny status|models|load|unload|restart|shutdown, /view, /think on|off
                             # makes images and video clips; media and questions open in a browser viewer
+                            # searches the web (DuckDuckGo) and reads pages; asks first, `a` allows both
                             # the status line shows how full the context is (e.g. 13K / 131K tokens)
 tai mcp                     # MCP servers the agent uses (.mcp.json, ~/.config/tai/mcp.json)
 tai skills                  # skills it can use (.claude/skills, ~/.claude/skills, ~/.config/tai/skills)

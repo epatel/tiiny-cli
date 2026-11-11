@@ -19,6 +19,7 @@ from tai.agent.loop import Agent, AgentConfig, Decision, Transcript
 from tai.agent.prompt import system_prompt
 from tai.agent.tools import TOOLS, Tool, ToolContext
 from tai.agent.media import MediaContext, media_tools
+from tai.agent.web import web_tools
 from tai.agent.tui import AgentApp, AppInfo, TuiLoaderUI
 from tai.agent.viewer import Viewer
 from tai.config import data_dir
@@ -68,7 +69,7 @@ def open_session(app, session: SessionRef, model: str | None, root: Path) -> Age
 
 
 def load_extensions(root: Path, use_mcp: bool = True) -> Extensions:
-    tools = dict(TOOLS)
+    tools = dict(TOOLS) | web_tools()
     found = skills.discover(root)
     if found:
         tools["skill"] = skills.skill_tool(found)

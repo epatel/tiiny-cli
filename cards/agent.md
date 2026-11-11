@@ -24,7 +24,7 @@ flowchart LR
 
 ## Promises (keep them true)
 
-- Reads (read, grep, glob, ls, skill, read-only MCP tools) never ask. **write/edit** (grant group `files`) and **bash** (group `bash`) ask first, showing a unified diff or the command.
+- Reads (read, grep, glob, ls, skill, read-only MCP tools) never ask. **write/edit** (grant group `files`) and **bash** (group `bash`) ask first, showing a unified diff or the command. **web_search/web_fetch** (group `web`) ask too, showing the query or URL, since both send something off the machine.
 - "Always" (`a`) covers that group for the rest of the session (`Agent.granted`), **except** writes outside the project root (`Preview.outside`). Those ask every time, and the modal doesn't offer "always" for them.
 - The modal's preview (`#perm-body`) gets its max height from the screen (`PermissionScreen._fit_body`, on mount and resize): 85% of the rows minus 8 rows of chrome, capped at 30, and it scrolls. A fixed 30 used to push the y/a/n line off the dialog in terminals under ~45 rows. `ConfirmScreen` is centred like it.
 - A denied call is never run. The model is told `DENIED` and asked not to retry.
@@ -61,6 +61,11 @@ flowchart LR
 - **Page**: the agent's HTML and Markdown (rendered by `marked` from jsDelivr) go into `<iframe sandbox="allow-scripts">` srcdoc. Each frame posts its body height back. 3D uses `<model-viewer>` from unpkg and only when WebGL is available, with a download link always shown. Every card renders through `safeRender`.
 - Bugs found in a real browser (keep them fixed): one throwing renderer (model-viewer without WebGL) aborted the `hello` replay and hid every later card; `Object.assign(el, {dataset: …})` throws (`dataset` is read-only); `documentElement.scrollHeight` never shrinks below the frame height, so measure `body`.
 - Tests: `tests/test_agent_viewer.py` runs the real server with an aiohttp client as the browser (token, origin, live push, replay, file serving, ask/cancel/timeout). `tests/test_agent_media.py` uses a fake device and viewer. The page itself was checked by hand in Chrome.
+
+## Web tools (`agent/web.py`)
+- `web_search` posts the query to DuckDuckGo's plain HTML page (`html.duckduckgo.com/html/`, no key) and parses `a.result__a` + `.result__snippet` with the stdlib `HTMLParser`. It unwraps `//duckduckgo.com/l/?uddg=` links and drops ads (`y.js`). Any status other than 200 (e.g. 202 when rate-limited) is a ToolError. If DuckDuckGo changes the page, this parser is what breaks: `test_agent_web.py` has a sample of the real markup (checked live 2026-11-11).
+- `web_fetch` only fetches http(s), reads at most 5 MB, and refuses types that aren't text. HTML becomes text: script/style/head/nav/aside dropped, line breaks at block elements, whitespace collapsed like a browser except in `<pre>` (code keeps its indentation), and empty icon bullets removed. It returns 20K characters per call; `offset` continues.
+- No new dependencies (httpx + stdlib). The system prompt tells the model to search, fetch, and cite URLs instead of guessing.
 
 ## When the agent's model gets swapped out
 
