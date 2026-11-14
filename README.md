@@ -82,14 +82,8 @@ tai 3d toy.png --faces 200000 -o toy.glb       # ~15 min, image → textured mes
 tai video "a fox in the snow" --seconds 2 --steps 4 --open   # clip with sound, ~7 min
 tai video -i fox.png "the fox starts running"  # animate a start frame; max 7 s, 4 sizes
 
-tai agent                   # coding agent (full-screen) in the current folder
+tai agent                   # coding agent (full-screen) in the current folder; see below
 tai agent "fix the failing test"   # start with a task; -c continues here
-                            # inside: /tiiny status|models|load|unload|restart|shutdown, /view, /think on|off
-                            # /phase start <goal>: explore → plan → the plan's phases, each in a fresh context
-                            # /compact [focus]: summarise the conversation to free context (automatic at 85%)
-                            # makes images and video clips; media and questions open in a browser viewer
-                            # searches the web (DuckDuckGo) and reads pages; asks first, `a` allows both
-                            # the status line shows how full the context is (e.g. 13K / 131K tokens)
 tai mcp                     # MCP servers the agent uses (.mcp.json, ~/.config/tai/mcp.json)
 tai skills                  # skills it can use (.claude/skills, ~/.claude/skills, ~/.config/tai/skills)
 
@@ -121,6 +115,43 @@ tai embed -x dimensions=256 "hello"                                   # 256 numb
 ```
 
 All five were checked on the device (Qwen3.6, OmniVoice, Qwen3-Embedding).
+
+## The coding agent: `tai agent`
+
+A full-screen coding agent that works in the current folder, on any installed model that supports tool use (e.g. Qwen3-Coder-Next or Qwen3.6; `tai config set default.agent …` picks one). It reads, searches and edits files, runs commands, makes images and video clips, and searches the web. It reads the project's `AGENTS.md` or `CLAUDE.md`.
+
+```sh
+tai agent                          # new session in this folder
+tai agent "fix the failing test"   # start with a task
+tai agent -c                       # continue the latest session here (-r ID: any session)
+tai agent -m qwen3.6 --no-think    # pick the model, reasoning off
+tai agent --no-save                # leave no session or prompt history behind
+```
+
+**Permissions.** Reading never asks. Edits show a diff and commands show the command line before they run: **y** yes, **a** always (this session), **n** no. Web searches and page fetches ask too. Writes outside the project ask every time.
+
+**Inside the agent**
+
+| Command | What it does |
+|---|---|
+| `/phase start <goal>` | Phased work on a larger task (below). `/phase` shows the phases; `/phase help` lists the rest |
+| `/compact [focus]` | Summarise the conversation to free context; the focus says what to keep in detail |
+| `/think on\|off` | Reasoning on or off from the next step |
+| `/tiiny status\|models\|load\|unload\|restart\|shutdown` | Manage the device without leaving the agent |
+| `/view` | Open the browser viewer (images, audio, video, 3D, HTML, and questions from the agent) |
+| `/skills`, `/<skill> [task]` | List skills, or use one |
+| `/mcp` | MCP servers and their tools |
+| `/clear`, `/help`, `/exit` | Forget the conversation, show keys and commands, quit |
+
+Enter sends; Ctrl+J, Alt+Enter or `\` then Enter adds a new line. ↑/↓ recall earlier prompts. Esc interrupts. The status line shows what the agent is doing and how full the context is (e.g. `13K / 131K tokens (10%)`).
+
+**Phased work.** `/phase start <goal>` splits a larger task into focused phases. Each phase starts with a fresh context, so it can use the whole context window for one thing. The first two are fixed: **explore** (read the code, write notes) and **plan** (write `plan.md` and define the remaining phases, e.g. build a test tool, write tests, implement, verify). Phases pass work on through files in `.tai/work/<date>-<task>/` (`plan.md`, `notes/`, `tools/`, `tests/`) and a short handoff; writing in that folder needs no permission. After each phase the agent asks whether to start the next one (**a** stops asking). If a phase fills 80% of the context it is told to write its notes and finish; at 95% it stops, and `/phase redo` restarts it fresh with its files kept. `/phase resume` continues the latest task in the folder, and `/phase stop` leaves phased mode. The work folder stays in the project, so you can read it or commit it.
+
+**Compaction.** When the context reaches 85% (`tai config set agent.compact 70`, or `off`), the model summarises the conversation: task, decisions, what's done, current state, next steps. The conversation continues from that summary plus the latest messages. If it fails or you press Esc, nothing changes. The full conversation stays saved as its own session.
+
+**Media and the viewer.** The agent can make images (`image` tool) and short video clips (`video`, several minutes each). Results, and questions with choices, open in a local browser page. When a model doesn't fit next to the agent's own, it asks before unloading anything and reloads the agent's model afterwards.
+
+**MCP servers and skills.** MCP servers come from the project's `.mcp.json` (Claude Code's format) and `~/.config/tai/mcp.json`. Their tools ask first unless the server marks them read-only. Skills come from `.claude/skills/`, `~/.claude/skills/` and `~/.config/tai/skills/`, so they are shared with Claude Code. `tai mcp` and `tai skills` list them; `tai agent --no-mcp` skips MCP.
 
 ## Remote use: `tai serve`
 
