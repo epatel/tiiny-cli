@@ -3,7 +3,7 @@ BIN    := $(VENV)/bin
 PREFIX ?= $(HOME)/.local
 PYTHON ?= python3
 
-.PHONY: help setup test health scan check link unlink clean
+.PHONY: help setup test health scan check bench bench-check link unlink clean
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -31,12 +31,19 @@ scan: setup  ## Code-health overview of the whole project
 
 check: test health  ## Everything to run before committing
 
-link: setup  ## Put `tai` on PATH via $(PREFIX)/bin
+bench: setup  ## Benchmark tai agent plain vs phased on the device (ARGS="-t ts-templates -n 3"; slow)
+	$(BIN)/python benchmarks/run.py $(ARGS)
+
+bench-check: setup  ## Check the benchmark graders (no device)
+	$(BIN)/python benchmarks/run.py --check
+
+link: setup  ## Put `tai` and `tai-top` on PATH via $(PREFIX)/bin
 	mkdir -p $(PREFIX)/bin
 	ln -sf $(CURDIR)/$(BIN)/tai $(PREFIX)/bin/tai
+	ln -sf $(CURDIR)/$(BIN)/tai-top $(PREFIX)/bin/tai-top
 
 unlink:  ## Remove the `tai` link from $(PREFIX)/bin
-	rm -f $(PREFIX)/bin/tai
+	rm -f $(PREFIX)/bin/tai $(PREFIX)/bin/tai-top
 
 clean:  ## Remove caches and build metadata (keeps .venv)
 	rm -rf .pytest_cache src/*.egg-info

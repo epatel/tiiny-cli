@@ -33,6 +33,7 @@ class ToolError(Exception):
 class ToolContext:
     root: Path
     bash_timeout: float = 120.0
+    wrap: tuple[str, ...] = ()  # prefix for bash commands, e.g. a sandbox (the benchmarks use sandbox-exec)
 
     def resolve(self, path: str) -> Path:
         p = Path(path).expanduser()
@@ -174,7 +175,7 @@ def preview_bash(args: dict, ctx: ToolContext) -> Preview:
 def run_bash(args: dict, ctx: ToolContext) -> str:
     timeout = float(args.get("timeout") or ctx.bash_timeout)
     try:
-        r = subprocess.run(["/bin/bash", "-c", args["command"]], cwd=ctx.root, stdin=subprocess.DEVNULL,
+        r = subprocess.run([*ctx.wrap, "/bin/bash", "-c", args["command"]], cwd=ctx.root, stdin=subprocess.DEVNULL,
                            capture_output=True, text=True, errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired as e:
         partial = (e.stdout or "") + (e.stderr or "") if isinstance(e.stdout, str) else ""

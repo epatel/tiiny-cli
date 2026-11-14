@@ -18,6 +18,7 @@ The Tiiny device's HTTP API as `tai` uses it: endpoints, payloads and their quir
 | `GET /api/v1/models/npu/status` | `npu_total` (100), `npu_used`, `npu_available` |
 | `POST /api/v1/models/{id}/launch/stream` | Load. SSE stream of `event: progress` then `event: done`; on failure `done` has `success: false`, plus `startup_error` and a `toast.message` |
 | `POST /api/v1/models/{id}/stop` | Unload |
+| `GET /api/v1/sys/status` | `cpu {total_percent, per_core_percent[12]}`, `memory {used_bytes, total_bytes, usage_percent}`, `gpu {utilization_percent}` ("synthetic"), `npus[0] {utilization_percent, memory_used_mb, memory_total_mb}`, `disk`. `total_percent` disagrees with the per-core figures (0.0 next to cores at ~40%), so `tai-top` graphs the per-core mean. `memory_total_mb` varies between calls (12372, then ~9400) |
 
 Model ids contain a slash (`Qwen/Qwen3-Coder-Next`), and the slash goes straight into the path.
 

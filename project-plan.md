@@ -37,6 +37,10 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
   - [x] tests (loop + runner with the fake stream, TUI pilot), card
   - [x] breakdown entry points: `tai agent --phase TASK`, and a `start_phases` tool the agent can call for a big task (asks first; the conversation becomes the background)
   - [ ] live run by the user
+- [ ] M10 — Benchmark plain vs phased (2026-11-14): `benchmarks/run.py`, headless agent loop, sandboxed bash, four tasks (Python, TypeScript, research, writing) with hidden tests or checks + optional model judge
+  - [x] harness, graders with reference solutions (`--check`), tests with the fake model
+  - [ ] first device run by the user (`make bench`, then `-n 3`)
+- [x] `tai-top` (2026-11-14): live full-screen monitor of the device (NPU/CPU graphs, memory, NPU memory, budget, per-core bars, loaded models); Unicode block characters, `--ascii` (or a non-UTF-8 locale) for plain ASCII. User request.
 - [ ] M5 — Polish: shell completion? OCR/rerank if models get installed?
 
 ## Decisions
@@ -68,14 +72,15 @@ One line each; the how and why live in the cards and the code.
 - 2026-11-14 — Phased work: explore + plan fixed, the plan defines the rest; y/a/n between phases; work folder in the project; TUI only. User idea, choices as suggested.
 - 2026-11-14 — Phased work can start from the shell (`--phase`) or be offered by the agent (`start_phases`, asks first). User request.
 - 2026-11-14 — Agent step limit 50 → 200, `agent.max_steps` (or off), none in phased work: the context budget ends a phase. User report (stopped too early).
+- 2026-11-14 — Benchmarks: a standalone `benchmarks/run.py`, not a tai command; bash under macOS sandbox-exec; Python, TypeScript, research and writing tasks. User choices; task fixtures excluded from aihealth (`.aihealth.toml`).
 - 2026-11-14 — Compaction: summary + latest messages, manual and automatic at 85%, off in phases. `compact.py` keeps aihealth's Primitive Obsession (messages are plain dicts throughout tai).
 
 ## Current state / handoff
-- **Built:** every command in M2 plus `info`, `video`, `-x`, `serve`/client mode, and `tai agent` with tools, viewer, media, web, MCP, skills, `/tiiny`, phased work (M9) and compaction. 258 unit tests pass (no device needed), also in CI on Python 3.10–3.13 + macOS.
+- **Built:** every command in M2 plus `info`, `video`, `-x`, `serve`/client mode, and `tai agent` with tools, viewer, media, web, MCP, skills, `/tiiny`, phased work (M9) and compaction. 279 unit tests pass (no device needed), also in CI on Python 3.10–3.13 + macOS.
 - **Checked live:** all seven original models, plus `tai info`, `tai video` and `-x` (2026-11-08/09). Results and timings are in the cards (device-api, agent). The user has used `tai agent` (the 2026-11-09 thinking-label report), but the M6 live-run item is still open.
 - **Not run live yet:** phased work, compaction, and the `video` tool inside the TUI.
 - **Device, last seen 2026-11-09:** only Qwen3.8-27B loaded. Don't reload the coder model unasked; a live run may unload the user's models.
-- **Next:** a live agent run (`/phase start …`, `/compact`); then M7 robustness or M5 polish.
+- **Next:** the user runs `make bench` (plain vs phased) and a live agent run (`/phase start …`, `/compact`); then M7 robustness or M5 polish.
 
 ## Open questions
 - None right now.

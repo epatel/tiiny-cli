@@ -75,6 +75,11 @@ def test_bash_runs_in_root_with_exit_code(ctx):
     assert out.splitlines()[0] == "exit code 3" and str(ctx.root) in out and "err" in out
 
 
+def test_bash_wrap_prefixes_the_command(ctx):
+    ctx.wrap = ("/usr/bin/env", "WRAPPED=yes")
+    assert "yes" in run("bash", ctx, command="echo $WRAPPED")
+
+
 def test_bash_timeout(ctx):
     with pytest.raises(ToolError, match="timed out after 1s"):
         run("bash", ctx, command="sleep 5", timeout=1)
