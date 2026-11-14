@@ -12,6 +12,8 @@ import sqlite3
 import time
 from pathlib import Path
 
+from .config import ConfigError
+
 MIGRATIONS = [
     # 1: chat history
     """
@@ -59,6 +61,11 @@ PROMPT_HISTORY_LIMIT = 500  # prompts loaded into `tai agent`'s Up/Down history
 
 def migrate(conn: sqlite3.Connection) -> int:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version > len(MIGRATIONS):
+        raise ConfigError(
+            f"database schema is version {version}, but this tai knows only {len(MIGRATIONS)}: "
+            "it was written by a newer tai, so update tai"
+        )
     for i, sql in enumerate(MIGRATIONS[version:], start=version):
         try:
             conn.executescript(f"BEGIN; {sql}; PRAGMA user_version = {i + 1}; COMMIT;")

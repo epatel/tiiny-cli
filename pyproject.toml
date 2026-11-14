@@ -23,7 +23,7 @@ dependencies = [
 dev = [
     "pytest>=8",
     "respx>=0.21",
-    "aihealth @ git+https://github.com/epatel/ai-health@v0.2.1",
+    "aihealth @ git+https://github.com/epatel/ai-health@7caab47df75fb864b9783847456829793fa60b7f",  # v0.2.1
 ]
 
 [project.scripts]

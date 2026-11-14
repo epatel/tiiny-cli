@@ -1,20 +1,32 @@
 {
   "source": "https://ai.memention.net/setup",
-  "version": "2026-11-08",
-  "updated": "2026-11-08",
+  "version": "2026-11-14.4",
+  "updated": "2026-11-14",
   "applied": [
     "known-stack",
     "context-cards",
     "standing-defaults",
     "project-plan",
     "hooks-over-prose",
-    "code-health"
+    "code-health",
+    "skill:review-agentic-setup"
   ],
-  "declined": [],
+  "declined": [
+    "feature-first",
+    "feature-first-advanced",
+    "two-tier"
+  ],
   "copied": {
     "cards/standing-defaults.md": {
       "pattern": "standing-defaults",
-      "sha256": "c881fcdbb289e30e50344d85b93688923e2c230378c5425af2bbfe62459494f4"
+      "sha256": "8539dbdf33ba63de33d1af1f02f6bbfd53d92178ccfbf26b1a88a20e886f7b8a"
     }
+  },
+  "skills_release": "v2026.11.14",
+  "tools": {
+    "aihealth": { "pattern": "code-health", "min": "0.2.1", "pin": "7caab47df75fb864b9783847456829793fa60b7f", "form": "project-venv" },
+    "python": { "pattern": "code-health", "min": "3.11", "form": "existing" },
+    "git": { "pattern": "code-health", "min": "2.24", "form": "existing" },
+    "jq": { "pattern": "hooks-over-prose", "min": "1.6", "form": "existing" }
   }
 }

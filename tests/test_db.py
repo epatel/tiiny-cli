@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from tai import db
+from tai.config import ConfigError
 from tai.db import MIGRATIONS, Store, migrate
 
 
@@ -34,6 +35,13 @@ def test_failed_migration_rolls_back(tmp_path, monkeypatch):
         db.migrate(conn)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
     assert not conn.execute("SELECT name FROM sqlite_master WHERE name = 'x'").fetchone()
+
+
+def test_refuses_a_database_from_newer_code(tmp_path):
+    conn = sqlite3.connect(tmp_path / "t.db")
+    conn.execute(f"PRAGMA user_version = {len(MIGRATIONS) + 1}")
+    with pytest.raises(ConfigError, match="newer tai"):
+        migrate(conn)
 
 
 def test_sessions_and_messages(tmp_path):
