@@ -164,8 +164,12 @@ def _set_next_phases(work: Work, upcoming: list | None) -> None:
 
 
 def slug(text: str, limit: int = 40) -> str:
+    """Folder-name form of ``text``, cut at a word boundary to at most ``limit`` characters."""
     words = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
-    return words[:limit].rstrip("-") or "task"
+    if len(words) > limit:
+        head = words[:limit + 1]
+        words = head.rsplit("-", 1)[0] if "-" in head else words[:limit]
+    return words.rstrip("-") or "task"
 
 
 class PhaseRunner:

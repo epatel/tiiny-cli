@@ -148,6 +148,44 @@ Enter sends; Ctrl+J, Alt+Enter or `\` then Enter adds a new line. ↑/↓ recall
 
 **Phased work.** `/phase start <goal>` (or `tai agent --phase "<goal>"`) splits a larger task into focused phases. If you give the agent a big task as a normal prompt, it may offer to switch to phased work itself; you're asked first, and the conversation so far is passed on as background. Each phase starts with a fresh context, so it can use the whole context window for one thing. The first two are fixed: **explore** (read the code, write notes) and **plan** (write `plan.md` and define the remaining phases, e.g. build a test tool, write tests, implement, verify). Phases pass work on through files in `.tai/work/<date>-<task>/` (`plan.md`, `notes/`, `tools/`, `tests/`) and a short handoff; writing in that folder needs no permission. After each phase the agent asks whether to start the next one (**a** stops asking). If a phase fills 80% of the context it is told to write its notes and finish; at 95% it stops, and `/phase redo` restarts it fresh with its files kept. `/phase resume` continues the latest task in the folder, and `/phase stop` leaves phased mode. The work folder stays in the project, so you can read it or commit it.
 
+<details>
+<summary>Example: phased work on "add shell completion"</summary>
+
+An illustration of the flow, not a recorded run. The phases after `plan` are whatever the plan decides.
+
+```sh
+tai agent --phase "add shell completion for bash and zsh, installed with tai completion"
+```
+
+```mermaid
+flowchart LR
+  E[1 explore<br/>reads cli.py, click docs<br/>→ notes/explore.md] --> P[2 plan<br/>→ plan.md<br/>defines phases 3-5]
+  P --> T[3 tests<br/>tools/try-completion.sh<br/>+ failing tests]
+  T --> I[4 implement<br/>tai completion bash/zsh<br/>until the tests pass]
+  I --> D[5 docs<br/>README + card]
+```
+
+1. **explore** reads `src/tai/cli.py`, the Makefile and click's completion docs (web search), and writes what it found to `notes/explore.md`: how commands are registered, that click already generates completion scripts, open questions. It changes no project files, then calls `phase_done` with a short handoff.
+2. You're asked *Start phase plan now?* — **y**.
+3. **plan** starts with a fresh context holding the task, explore's handoff and the notes it points to. It asks you one real choice (print the script, or also install it?), writes `plan.md` and defines the remaining phases.
+4. **tests** writes `tools/try-completion.sh` (runs a completion in a scratch shell) and failing tests in `tests/`. Its handoff says how to run both.
+5. **implement** adds `tai completion bash|zsh` until those tests pass. **docs** updates the README.
+
+Each phase sees only the work folder and the handoffs, never the earlier conversations:
+
+```text
+.tai/work/2026-11-14-add-shell-completion-for-bash-and-zsh/
+├── state.json          # goal, phases, handoffs (written by tai)
+├── plan.md             # goal, approach, decisions, phases (written by the agent)
+├── notes/explore.md
+├── tools/try-completion.sh
+└── tests/
+```
+
+`/phase` shows where it is (`✓ explore`, `✓ plan`, `▶ tests`, `· implement`, `· docs`), and the title bar shows `phase 3/5 · tests`.
+
+</details>
+
 **Compaction.** When the context reaches 85% (`tai config set agent.compact 70`, or `off`), the model summarises the conversation: task, decisions, what's done, current state, next steps. The conversation continues from that summary plus the latest messages. If it fails or you press Esc, nothing changes. The full conversation stays saved as its own session.
 
 **Media and the viewer.** The agent can make images (`image` tool) and short video clips (`video`, several minutes each). Results, and questions with choices, open in a local browser page. When a model doesn't fit next to the agent's own, it asks before unloading anything and reloads the agent's model afterwards.

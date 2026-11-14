@@ -151,6 +151,10 @@ def test_resume_picks_the_latest_and_stop_restores(project):
 def test_slug():
     assert slug("Fix the  TUI's /phase bug!") == "fix-the-tui-s-phase-bug"
     assert slug("???") == "task"
+    assert slug("add shell completion for bash and zsh, installed with tai completion") == \
+        "add-shell-completion-for-bash-and-zsh"  # cut between words, not inside one
+    assert slug("x" * 50) == "x" * 40
+    assert slug("a" * 40 + " b") == "a" * 40
 
 
 # -- TUI ---------------------------------------------------------------------
