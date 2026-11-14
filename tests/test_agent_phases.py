@@ -82,6 +82,16 @@ def test_auto_allow_skips_the_question(project):
     assert asked == [] and (project / "b.txt").read_text() == "x"
 
 
+def test_step_limit_ends_the_turn_but_not_in_phased_work(project):
+    replies = [tool_reply("read", {"path": "a.txt"}, f"c{i}") for i in range(3)]
+    agent, _ = make(project, *replies, text_reply("ok"))
+    agent.config.max_steps = 2
+    assert list(agent.run("go"))[-1] == TurnEnd("max_steps")
+    agent, _ = make(project, *replies, text_reply("ok"))
+    agent.config.max_steps, agent.budget = 2, Budget("wrap")
+    assert list(agent.run("go"))[-1] == TurnEnd("done")
+
+
 # -- runner ------------------------------------------------------------------
 def test_start_creates_the_work_folder(project):
     agent, _ = make(project)

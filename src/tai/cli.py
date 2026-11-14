@@ -10,6 +10,7 @@ import random
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -42,6 +43,7 @@ SETTING_KEYS = {
     "think",  # on|off — default thinking mode for models that can toggle it
     "agent.think",  # on|off — the same for `tai agent` only (overrides `think` there)
     "agent.compact",  # off or 50-95 — % of the context window at which `tai agent` compacts (default 85)
+    "agent.max_steps",  # off or a number >= 10 — model calls per `tai agent` turn (default 200; no limit in phases)
     "show_thinking",  # on|off — print reasoning in `tai chat` (off: a "thinking…" spinner; `/think show|hide`)
     "tts.instruct",  # default voice-design instruct, e.g. "female, british accent"
 }
@@ -314,17 +316,28 @@ def config_set(app: App, key, value):
         value = app.agent_model(value).id
     elif key.startswith("default."):
         value = resolve(app.catalog(), value, task=key.split(".", 1)[1]).id
-    elif key in ("think", "agent.think", "show_thinking") and value not in ("on", "off"):
-        raise click.BadParameter(f"{key} must be on or off")
-    elif key == "agent.compact" and not _compact_value(value):
-        raise click.BadParameter("agent.compact must be off or a percentage from 50 to 95")
+    elif key in SETTING_CHECKS and not SETTING_CHECKS[key][0](value):
+        raise click.BadParameter(f"{key} must be {SETTING_CHECKS[key][1]}")
     app.store.set_setting(key, value)
     out.print(f"{key} = {value}")
 
 
-def _compact_value(value: str) -> bool:
-    """agent.compact: off, or a percentage from 50 to 95."""
-    return value == "off" or (value.isdigit() and 50 <= int(value) <= 95)
+def _off_or_number(low: int, high: int | None = None) -> Callable[[str], bool]:
+    """A check for "off" or a whole number from ``low`` (to ``high``)."""
+    return lambda v: v == "off" or (v.isdigit() and low <= int(v) and (high is None or int(v) <= high))
+
+
+def _on_off(value: str) -> bool:
+    return value in ("on", "off")
+
+
+SETTING_CHECKS = {  # key: (check, what a valid value is)
+    "think": (_on_off, "on or off"),
+    "agent.think": (_on_off, "on or off"),
+    "show_thinking": (_on_off, "on or off"),
+    "agent.compact": (_off_or_number(50, 95), "off or a percentage from 50 to 95"),
+    "agent.max_steps": (_off_or_number(10), "off or a number of at least 10"),
+}
 
 
 @config_cmd.command("unset")

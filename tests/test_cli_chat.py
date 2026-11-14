@@ -163,3 +163,10 @@ def test_agent_compact_setting(fake):
     assert r.exit_code == 2 and "50 to 95" in r.output
     assert run("config", "set", "agent.compact", "70").output.strip() == "agent.compact = 70"
     assert run("config", "set", "agent.compact", "off").output.strip() == "agent.compact = off"
+
+
+def test_agent_max_steps_setting(fake):
+    r = CliRunner().invoke(cli_mod.cli, ["config", "set", "agent.max_steps", "5"])
+    assert r.exit_code == 2 and "at least 10" in r.output
+    assert run("config", "set", "agent.max_steps", "500").output.strip() == "agent.max_steps = 500"
+    assert run("config", "set", "agent.max_steps", "off").output.strip() == "agent.max_steps = off"

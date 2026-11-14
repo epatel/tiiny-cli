@@ -15,7 +15,7 @@ from pathlib import Path
 import click
 
 from tai.agent import compact, mcp_client, skills
-from tai.agent.loop import Agent, AgentConfig, Decision, Transcript
+from tai.agent.loop import MAX_STEPS, Agent, AgentConfig, Decision, Transcript
 from tai.agent.prompt import system_prompt
 from tai.agent.tools import TOOLS, Tool, ToolContext
 from tai.agent.media import MediaContext, media_tools
@@ -79,6 +79,14 @@ def compact_at(app) -> int:
     value = app.store.get_setting("agent.compact")
     if value is None:
         return compact.DEFAULT_AT
+    return 0 if value == "off" else int(value)
+
+
+def max_steps(app) -> int:
+    """`agent.max_steps`: model calls per turn, or off (0: no limit). Default MAX_STEPS."""
+    value = app.store.get_setting("agent.max_steps")
+    if value is None:
+        return MAX_STEPS
     return 0 if value == "off" else int(value)
 
 
@@ -163,7 +171,8 @@ def _build_app(app, s: AgentSession, ext: Extensions, req: AgentRequest) -> Agen
 
     think = _think_extra(app, s.model, req.think, settings=AGENT_THINK_SETTINGS)
     config = AgentConfig(s.model.id, system_prompt(s.root, s.model.name, ext.prompt), ToolContext(s.root),
-                         extra=think, tools=ext.tools, context_window=s.model.context)
+                         extra=think, tools=ext.tools, context_window=s.model.context,
+                         max_steps=max_steps(app))
     sink = SessionSink(app.store, s)
     transcript = Transcript(s.messages, on_message=sink.save, on_replace=sink.compacted)
     agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver

@@ -8,6 +8,7 @@ appends is also passed to ``on_message`` so the caller can persist it.
 
 from __future__ import annotations
 
+import itertools
 import json
 import threading
 from collections.abc import Callable, Iterator
@@ -19,7 +20,7 @@ from typing import Protocol
 from tai.agent.tools import TOOLS, Preview, Tool, ToolContext, ToolError
 from tai.client import TiinyError
 
-MAX_STEPS = 50  # model calls per user turn
+MAX_STEPS = 200  # model calls per user turn (a runaway guard); 0 = no limit
 DENIED = "The user denied this tool call. Do not retry it; ask what to do instead or take another approach."
 INTERRUPTED = "Interrupted by the user before this tool ran."
 
@@ -157,7 +158,7 @@ class AgentConfig:
     system: str
     ctx: ToolContext
     extra: dict = field(default_factory=dict)  # extra request fields
-    max_steps: int = MAX_STEPS
+    max_steps: int = MAX_STEPS  # 0 = no limit; not applied in phased work (the budget ends a phase)
     tools: dict[str, Tool] = field(default_factory=lambda: dict(TOOLS))  # built-ins + skill + MCP
     context_window: int = 0  # the model's context size in tokens; 0 = unknown (no budget checks)
 
@@ -302,8 +303,13 @@ class Agent:
         except TiinyError as e:
             yield TurnEnd("error", str(e))
 
+    def _step_range(self) -> Iterator[int]:
+        """Phased work (a budget) and max_steps 0 have no step limit: the context ends them."""
+        limit = self.config.max_steps
+        return itertools.count() if self.budget is not None or not limit else iter(range(limit))
+
     def _steps(self) -> Iterator[Event]:
-        for _ in range(self.config.max_steps):
+        for _ in self._step_range():
             msg = yield from self._stream_or_reload()
             self._append(msg)
             calls = msg.get("tool_calls") or []

@@ -770,7 +770,7 @@ class AgentApp(App):
         if ev.reason == "error":
             self._add(Static(Text(f"error: {ev.error}"), classes="tool-fail"))
         notes = {"done": "ready", "interrupted": "■ interrupted — ready",
-                 "max_steps": "■ stopped: step limit reached — ready", "error": "■ error — ready",
+                 "max_steps": "■ stopped: step limit reached — type continue to go on", "error": "■ error — ready",
                  "context_full": "■ stopped: context nearly full — ready"}
         self._status(notes.get(ev.reason, "ready"))
         if self.phases.active:

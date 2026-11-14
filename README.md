@@ -94,6 +94,7 @@ tai config set default.chat coder              # preferred model per task
 tai config set think off                       # default reasoning mode
 tai config set agent.think off                 # the same for tai agent only (also: tai agent --no-think)
 tai config set agent.compact 70                # tai agent compacts at 70% of the context (default 85; off)
+tai config set agent.max_steps 400             # model calls per tai agent turn before it pauses (default 200; off)
 tai config set show_thinking off               # tai chat: hide the reasoning text by default
 ```
 

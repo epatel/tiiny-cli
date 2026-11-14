@@ -67,10 +67,11 @@ One line each; the how and why live in the cards and the code.
 - 2026-11-14 — Setup refreshed to ai.memention.net 2026-11-14.4 (aihealth pinned to a commit, `migrate()` refuses newer databases); feature-first/two-tier declined.
 - 2026-11-14 — Phased work: explore + plan fixed, the plan defines the rest; y/a/n between phases; work folder in the project; TUI only. User idea, choices as suggested.
 - 2026-11-14 — Phased work can start from the shell (`--phase`) or be offered by the agent (`start_phases`, asks first). User request.
+- 2026-11-14 — Agent step limit 50 → 200, `agent.max_steps` (or off), none in phased work: the context budget ends a phase. User report (stopped too early).
 - 2026-11-14 — Compaction: summary + latest messages, manual and automatic at 85%, off in phases. `compact.py` keeps aihealth's Primitive Obsession (messages are plain dicts throughout tai).
 
 ## Current state / handoff
-- **Built:** every command in M2 plus `info`, `video`, `-x`, `serve`/client mode, and `tai agent` with tools, viewer, media, web, MCP, skills, `/tiiny`, phased work (M9) and compaction. 256 unit tests pass (no device needed), also in CI on Python 3.10–3.13 + macOS.
+- **Built:** every command in M2 plus `info`, `video`, `-x`, `serve`/client mode, and `tai agent` with tools, viewer, media, web, MCP, skills, `/tiiny`, phased work (M9) and compaction. 258 unit tests pass (no device needed), also in CI on Python 3.10–3.13 + macOS.
 - **Checked live:** all seven original models, plus `tai info`, `tai video` and `-x` (2026-11-08/09). Results and timings are in the cards (device-api, agent). The user has used `tai agent` (the 2026-11-09 thinking-label report), but the M6 live-run item is still open.
 - **Not run live yet:** phased work, compaction, and the `video` tool inside the TUI.
 - **Device, last seen 2026-11-09:** only Qwen3.8-27B loaded. Don't reload the coder model unasked; a live run may unload the user's models.
