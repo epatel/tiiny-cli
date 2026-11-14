@@ -189,6 +189,8 @@ Each phase sees only the work folder and the handoffs, never the earlier convers
 
 **Compaction.** When the context reaches 85% (`tai config set agent.compact 70`, or `off`), the model summarises the conversation: task, decisions, what's done, current state, next steps. The conversation continues from that summary plus the latest messages. If it fails or you press Esc, nothing changes. The full conversation stays saved as its own session.
 
+**Step limit.** One prompt may lead to many model calls (read, edit, run, read again). After 200 calls in one turn the agent pauses with "step limit reached"; type `continue` to carry on in the same conversation. `tai config set agent.max_steps 400` changes the limit, and `off` removes it. Phased work has no step limit: the context budget ends each phase.
+
 **Media and the viewer.** The agent can make images (`image` tool) and short video clips (`video`, several minutes each). Results, and questions with choices, open in a local browser page. When a model doesn't fit next to the agent's own, it asks before unloading anything and reloads the agent's model afterwards.
 
 **MCP servers and skills.** MCP servers come from the project's `.mcp.json` (Claude Code's format) and `~/.config/tai/mcp.json`. Their tools ask first unless the server marks them read-only. Skills come from `.claude/skills/`, `~/.claude/skills/` and `~/.config/tai/skills/`, so they are shared with Claude Code. `tai mcp` and `tai skills` list them; `tai agent --no-mcp` skips MCP.
