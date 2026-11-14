@@ -14,6 +14,7 @@ from collections.abc import Callable, Iterator
 from contextlib import closing
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Protocol
 
 from tai.agent.tools import TOOLS, Preview, Tool, ToolContext, ToolError
 from tai.client import TiinyError
@@ -95,9 +96,30 @@ class ToolCallProgress:
     chars: int
 
 
+@dataclass
+class SummaryProgress:
+    """The model writing the summary that compacts the conversation."""
+    chars: int
+
+
+@dataclass
+class Compacted:
+    """The conversation was replaced by ``summary`` plus its last ``kept`` messages."""
+    summary: str
+    before: int  # messages before
+    kept: int
+
+
 Event = (TextDelta | ReasoningDelta | ToolStart | ToolEnd | TurnEnd | Notice | Usage | PromptProgress
-         | ToolCallProgress)
+         | ToolCallProgress | SummaryProgress | Compacted)
 Approver = Callable[[Tool, dict, Preview], Decision]
+
+
+class Compactor(Protocol):
+    """Compaction as the loop sees it (``tai.agent.compact.Compactor``)."""
+    def new_turn(self) -> None: ...
+    def due(self) -> bool: ...
+    def run(self) -> Iterator[Event]: ...
 
 
 @dataclass
@@ -142,13 +164,19 @@ class AgentConfig:
 
 @dataclass
 class Transcript:
-    """The conversation so far; ``on_message`` sees every appended message (for saving)."""
+    """The conversation so far; ``on_message`` sees every appended message (for saving),
+    ``on_replace`` the whole new conversation after compaction."""
     messages: list[dict] = field(default_factory=list)
     on_message: Callable[[dict], None] = lambda m: None
+    on_replace: Callable[[list[dict]], None] = lambda msgs: None
 
     def append(self, msg: dict) -> None:
         self.messages.append(msg)
         self.on_message(msg)
+
+    def replace(self, messages: list[dict]) -> None:
+        self.messages[:] = messages
+        self.on_replace(list(messages))
 
 
 class _Accumulator:
@@ -226,7 +254,8 @@ class Agent:
         self.budget: Budget | None = None  # context limits for this run (phased work); None = none
         self.tokens = 0  # context used by the last model request
         self._wrapped = False  # the wrap-up message was sent in this context
-        self._end_reason: str | None = None  # a tool asked to end the turn (end_turn)
+        self._end: TurnEnd | None = None  # a tool asked to end the turn (end_turn)
+        self.compactor: Compactor | None = None  # compacts the conversation when the context fills up
 
     @property
     def messages(self) -> list[dict]:
@@ -238,21 +267,35 @@ class Agent:
         for hook in self.on_cancel:
             hook()
 
+    @property
+    def cancelled(self) -> bool:
+        return self._cancel.is_set()
+
     def clear(self) -> None:
         self.messages.clear()
+        self.reset_context()
+
+    def reset_context(self) -> None:
+        """The conversation was emptied or replaced: forget its size and the wrap-up message."""
         self.tokens, self._wrapped = 0, False
 
-    def end_turn(self, reason: str) -> None:
-        """From a tool: end the turn with ``TurnEnd(reason)`` once this step's tools have run."""
-        self._end_reason = reason
+    def start_turn(self) -> None:
+        self._cancel.clear()
+        self._end = None
+        if self.compactor is not None:
+            self.compactor.new_turn()
+
+    def end_turn(self, end: TurnEnd) -> None:
+        """From a tool: end the turn with ``end`` once this step's tools have run."""
+        self._end = end
 
     def _append(self, msg: dict) -> None:
         self.transcript.append(msg)
 
     # -- turn ------------------------------------------------------------
     def run(self, text: str) -> Iterator[Event]:
-        self._cancel.clear()
-        self._end_reason = None
+        self.start_turn()
+        yield from self._compact_if_due()
         self._append({"role": "user", "content": text})
         try:
             yield from self._steps()
@@ -270,14 +313,19 @@ class Agent:
             yield from events
             if stop:
                 return
+            yield from self._compact_if_due()
         yield TurnEnd("max_steps")
+
+    def _compact_if_due(self) -> Iterator[Event]:
+        if self.compactor is not None and self.compactor.due():
+            yield from self.compactor.run()
 
     def _after_step(self, calls: list) -> tuple[list[Event], bool]:
         """Events to yield after a step, and whether the turn ends."""
         if self._cancel.is_set():
             return [TurnEnd("interrupted")], True
-        if self._end_reason:
-            return [TurnEnd(self._end_reason)], True
+        if self._end is not None:
+            return [self._end], True
         if not calls:
             return [TurnEnd("done")], True
         return self._budget_events()
@@ -297,18 +345,20 @@ class Agent:
     def _stream_or_reload(self) -> Iterator[Event]:
         """Stream a reply; if the model has been unloaded meanwhile, reload it and retry once."""
         try:
-            return (yield from self._stream())
+            return (yield from self.stream())
         except TiinyError as e:
             if self.reload_model is None or not model_missing(e):
                 raise
         yield Notice(f"{self.config.model_id} is no longer loaded (a tool probably swapped it out) — reloading it")
         self.reload_model()
         yield Notice("Model reloaded — continuing")
-        return (yield from self._stream())
+        return (yield from self.stream())
 
-    def _stream(self) -> Iterator[Event]:
+    def stream(self, messages: list[dict] | None = None) -> Iterator[Event]:
+        """One model request on ``messages`` (default: the conversation), with the system prompt
+        and tools added; returns the reply message."""
         acc = _Accumulator()
-        convo = [{"role": "system", "content": self.config.system}, *self.messages]
+        convo = [{"role": "system", "content": self.config.system}, *(self.messages if messages is None else messages)]
         tools = [t.spec() for t in self.config.tools.values()]
         # return_progress: the device then streams prompt_progress while it reads the prompt
         stream = self.client.chat_stream(self.config.model_id, convo, tools=tools, return_progress=True,

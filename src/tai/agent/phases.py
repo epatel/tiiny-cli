@@ -19,7 +19,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from tai.agent.loop import Agent, Budget
+from tai.agent.loop import Agent, Budget, TurnEnd
 from tai.agent.tools import Tool, ToolContext, ToolError
 
 WORK_DIR = Path(".tai") / "work"
@@ -249,7 +249,7 @@ class PhaseRunner:
         phase.files = [str(f) for f in args.get("files") or []]
         work.save()
         self.finished = True
-        self.agent.end_turn("phase_done")
+        self.agent.end_turn(TurnEnd("phase_done"))
         nxt = work.current
         return f"Phase '{phase.name}' recorded. " + (f"Next: {nxt.name}. Stop now." if nxt else "All phases done.")
 

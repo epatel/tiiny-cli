@@ -12,7 +12,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
@@ -27,8 +27,9 @@ from textual.screen import ModalScreen
 from textual.widgets import Collapsible, Footer, Static, TextArea
 from textual.widgets import Markdown as MarkdownView
 
-from tai.agent.loop import (Agent, Decision, Event, Notice, ReasoningDelta, TextDelta, ToolEnd,
-                            PromptProgress, ToolCallProgress, ToolStart, TurnEnd, Usage)
+from tai.agent.compact import Compactor, is_summary
+from tai.agent.loop import (Agent, Compacted, Decision, Event, Notice, ReasoningDelta, SummaryProgress, TextDelta,
+                            ToolEnd, PromptProgress, ToolCallProgress, ToolStart, TurnEnd, Usage)
 from tai.agent.device import MUTATING, DeviceCommands
 from tai.models import short_tokens
 from tai.agent.history import PromptHistory
@@ -41,7 +42,7 @@ from tai.models import ResolveError
 RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
 
 HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · ↑/↓ earlier prompts · drag to select, Ctrl+C copy · Esc interrupt · Ctrl+C (nothing selected) quit
-**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/think on|off` reasoning from the next request · `/phase start <goal>` phased work (`/phase help`) · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
+**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/think on|off` reasoning from the next request · `/phase start <goal>` phased work (`/phase help`) · `/compact [focus]` summarise the conversation to free context · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
 
 PHASE_HELP = """**Phased work** — each phase starts with a fresh context and works from `.tai/work/<task>/` (plan.md, notes, tools, tests) and the earlier phases' handoffs. It starts with explore and plan; the plan defines the rest.
@@ -378,7 +379,10 @@ class AgentApp(App):
     def _replay(self, messages: list[dict]) -> None:
         """Show a resumed conversation: user text, assistant text, tool-call labels."""
         for msg in messages:
-            if msg["role"] == "user":
+            if is_summary(msg):
+                self._add(Collapsible(Static(Text(msg["content"])), title="conversation compacted — summary",
+                                      collapsed=True))
+            elif msg["role"] == "user":
                 self._add(Static(Text(f"› {msg['content']}"), classes="user"))
             elif msg["role"] == "assistant":
                 if msg.get("content"):
@@ -430,6 +434,8 @@ class AgentApp(App):
             self._think_cmd(arg.strip().lower())
         elif cmd == "phase":
             self._phase_cmd(arg)
+        elif cmd == "compact":
+            self._compact_cmd(arg.strip())
         elif cmd in dict(self.info.skills):
             self._submit(f"Use the `{cmd}` skill." + (f" {arg}" if arg else ""))
         else:
@@ -463,6 +469,34 @@ class AgentApp(App):
             self._update_title()
             when = " from the next step" if self.busy else ""
             self.notify(f"Thinking {arg}{when} (this run; `tai config set agent.think` for the default).")
+
+    # -- compaction ------------------------------------------------------
+    def _compact_cmd(self, focus: str) -> None:
+        if self._refuse_busy():
+            return
+        if self.phases.active:
+            self.notify("Phases don't compact: each starts fresh (/phase redo restarts this one).", severity="warning")
+            return
+        self.busy = True
+        self._add(Static(Text(f"› /compact {focus}".rstrip()), classes="user"))
+        self._busy("compacting…")
+        self.run_compact(focus)
+
+    @work(thread=True, exclusive=True, exit_on_error=False)
+    def run_compact(self, focus: str) -> None:
+        compactor = self.agent.compactor or Compactor(self.agent, 0)  # /compact works with auto off too
+        self._pump(lambda: compactor.turn(focus))
+
+    def _on_summary_progress(self, ev: SummaryProgress) -> None:
+        self._busy("compacting…", f"summary {short_tokens(ev.chars)} chars")
+
+    def _on_compacted(self, ev: Compacted) -> None:
+        self._end_text()
+        self.tokens = 0
+        self._add(Static(Text(f"• Compacted {ev.before} messages into a summary; kept the last {ev.kept} "
+                              f"word for word"), classes="notice"))
+        self._add(Collapsible(Static(Text(ev.summary)), title="summary", collapsed=True))
+        self._busy("working…")
 
     # -- phased work -----------------------------------------------------
     def _phase_cmd(self, arg: str) -> None:
@@ -611,8 +645,12 @@ class AgentApp(App):
     # -- agent thread ------------------------------------------------------
     @work(thread=True, exclusive=True, exit_on_error=False)
     def run_turn(self, text: str) -> None:
+        self._pump(lambda: self.agent.run(text))
+
+    def _pump(self, events: Callable[[], Iterator[Event]]) -> None:
+        """Worker thread: forward the agent's events to the UI."""
         try:
-            for ev in self.agent.run(text):
+            for ev in events():
                 self.post_message(AgentEvent(ev))
         except Exception as e:  # never let a bug kill the UI silently
             self.post_message(AgentEvent(TurnEnd("error", f"{type(e).__name__}: {e}")))
@@ -656,7 +694,8 @@ class AgentApp(App):
         handler = {TextDelta: self._on_text, ReasoningDelta: self._on_reasoning, ToolStart: self._on_tool_start,
                    ToolEnd: self._on_tool_end, TurnEnd: self._on_turn_end, Notice: self._on_notice,
                    Usage: self._on_usage, PromptProgress: self._on_prompt_progress,
-                   ToolCallProgress: self._on_tool_call_progress}[type(ev)]
+                   ToolCallProgress: self._on_tool_call_progress, SummaryProgress: self._on_summary_progress,
+                   Compacted: self._on_compacted}[type(ev)]
         handler(ev)
         self.log_view.scroll_end(animate=False)
 

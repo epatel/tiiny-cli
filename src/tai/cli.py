@@ -41,6 +41,7 @@ SETTING_KEYS = {
     "default.chat", "default.agent", "default.image", "default.tts", "default.asr", "default.embed", "default.3d",
     "think",  # on|off — default thinking mode for models that can toggle it
     "agent.think",  # on|off — the same for `tai agent` only (overrides `think` there)
+    "agent.compact",  # off or 50-95 — % of the context window at which `tai agent` compacts (default 85)
     "show_thinking",  # on|off — print reasoning in `tai chat` (off: a "thinking…" spinner; `/think show|hide`)
     "tts.instruct",  # default voice-design instruct, e.g. "female, british accent"
 }
@@ -315,8 +316,15 @@ def config_set(app: App, key, value):
         value = resolve(app.catalog(), value, task=key.split(".", 1)[1]).id
     elif key in ("think", "agent.think", "show_thinking") and value not in ("on", "off"):
         raise click.BadParameter(f"{key} must be on or off")
+    elif key == "agent.compact" and not _compact_value(value):
+        raise click.BadParameter("agent.compact must be off or a percentage from 50 to 95")
     app.store.set_setting(key, value)
     out.print(f"{key} = {value}")
+
+
+def _compact_value(value: str) -> bool:
+    """agent.compact: off, or a percentage from 50 to 95."""
+    return value == "off" or (value.isdigit() and 50 <= int(value) <= 95)
 
 
 @config_cmd.command("unset")

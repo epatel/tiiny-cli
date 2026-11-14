@@ -156,3 +156,10 @@ def test_agent_think_setting_is_on_or_off_and_leaves_ask_alone(fake):
     assert run("config", "set", "agent.think", "off").output.strip() == "agent.think = off"
     run("ask", "-m", "vision", "hi")
     assert "chat_template_kwargs" not in fake.requests[0]  # tai ask still uses the model's default
+
+
+def test_agent_compact_setting(fake):
+    r = CliRunner().invoke(cli_mod.cli, ["config", "set", "agent.compact", "99"])
+    assert r.exit_code == 2 and "50 to 95" in r.output
+    assert run("config", "set", "agent.compact", "70").output.strip() == "agent.compact = 70"
+    assert run("config", "set", "agent.compact", "off").output.strip() == "agent.compact = off"

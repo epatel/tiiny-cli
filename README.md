@@ -86,6 +86,7 @@ tai agent                   # coding agent (full-screen) in the current folder
 tai agent "fix the failing test"   # start with a task; -c continues here
                             # inside: /tiiny status|models|load|unload|restart|shutdown, /view, /think on|off
                             # /phase start <goal>: explore → plan → the plan's phases, each in a fresh context
+                            # /compact [focus]: summarise the conversation to free context (automatic at 85%)
                             # makes images and video clips; media and questions open in a browser viewer
                             # searches the web (DuckDuckGo) and reads pages; asks first, `a` allows both
                             # the status line shows how full the context is (e.g. 13K / 131K tokens)
@@ -98,6 +99,7 @@ tai info omni               # what a model is (incl. context window) + the optio
 tai config set default.chat coder              # preferred model per task
 tai config set think off                       # default reasoning mode
 tai config set agent.think off                 # the same for tai agent only (also: tai agent --no-think)
+tai config set agent.compact 70                # tai agent compacts at 70% of the context (default 85; off)
 tai config set show_thinking off               # tai chat: hide the reasoning text by default
 ```
 
