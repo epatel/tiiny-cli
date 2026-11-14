@@ -29,8 +29,7 @@ Enforced by hooks (`.claude/settings.json`): `pip install` outside `.venv/bin/` 
 
 ## Code health
 - aihealth is pinned in the `dev` extras (`.venv/bin/pip install -e '.[dev]'` installs it). Hooks and the `aihealth` MCP server (`.mcp.json`) use `.venv/bin/aihealth` and do nothing if it isn't installed.
-- Before committing, run `make health` (`.venv/bin/aihealth delta`) and fix new or worsened smells it reports in code you touched (exit code 1 = health degraded).
-- `.venv/bin/aihealth scan .` gives an overview of the codebase.
+- Fix new or worsened smells that `make health` (`.venv/bin/aihealth delta`, part of `make check`) reports in code you touched (exit code 1 = health degraded).
 
 ## Cards
 
