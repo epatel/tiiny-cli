@@ -85,6 +85,7 @@ tai video -i fox.png "the fox starts running"  # animate a start frame; max 7 s,
 tai agent                   # coding agent (full-screen) in the current folder
 tai agent "fix the failing test"   # start with a task; -c continues here
                             # inside: /tiiny status|models|load|unload|restart|shutdown, /view, /think on|off
+                            # /phase start <goal>: explore → plan → the plan's phases, each in a fresh context
                             # makes images and video clips; media and questions open in a browser viewer
                             # searches the web (DuckDuckGo) and reads pages; asks first, `a` allows both
                             # the status line shows how full the context is (e.g. 13K / 131K tokens)

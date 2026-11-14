@@ -135,13 +135,20 @@ def _build_app(app, s: AgentSession, ext: Extensions, req: AgentRequest) -> Agen
 
     think = _think_extra(app, s.model, req.think, settings=AGENT_THINK_SETTINGS)
     config = AgentConfig(s.model.id, system_prompt(s.root, s.model.name, ext.prompt), ToolContext(s.root),
-                         extra=think, tools=ext.tools)
+                         extra=think, tools=ext.tools, context_window=s.model.context)
     transcript = Transcript(s.messages, on_message=lambda msg: app.store.add_raw_message(s.sid, msg))
+
+    def new_context(label: str) -> None:
+        """A phase starts with a fresh context: save it as its own session, named after the phase."""
+        sid = app.store.create_agent_session(s.model.id, str(s.root))
+        app.store.update_session(sid, name=label[:120])
+        transcript.on_message = lambda msg: app.store.add_raw_message(sid, msg)
     agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver
     info = AppInfo(_title(s, ext), initial=req.text, on_clear=lambda: app.store.clear_messages(s.sid),
                    skills=[(k.name, k.description) for k in ext.skills], servers=ext.server_lines(),
                    history=app.store.prompts(s.root), on_prompt=lambda text: app.store.add_prompt(s.root, text),
-                   context_window=s.model.context, can_think=bool(s.model.thinking.get("toggleable")))
+                   context_window=s.model.context, can_think=bool(s.model.thinking.get("toggleable")),
+                   on_new_context=new_context)
     return AgentApp(agent, info)
 
 

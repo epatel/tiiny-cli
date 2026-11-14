@@ -101,6 +101,35 @@ Approver = Callable[[Tool, dict, Preview], Decision]
 
 
 @dataclass
+class ContextUse:
+    """How full the model's context is: ``tokens`` used out of ``window`` (0 = unknown)."""
+    tokens: int
+    window: int
+
+    @property
+    def share(self) -> float:
+        return self.tokens / self.window if self.window else 0.0
+
+    @property
+    def pct(self) -> int:
+        return int(self.share * 100)
+
+
+@dataclass
+class Budget:
+    """How much of the context window a run may fill: at ``wrap_up_at`` the model is told
+    to wrap up (``wrap_up`` with ``{pct}``, once), at ``stop_at`` the turn ends."""
+    wrap_up: str
+    wrap_up_at: float = 0.80
+    stop_at: float = 0.95
+
+    def state(self, use: ContextUse) -> str:
+        """Returns "stop", "wrap_up" or ""."""
+        share = use.share
+        return "stop" if share >= self.stop_at else "wrap_up" if share >= self.wrap_up_at else ""
+
+
+@dataclass
 class AgentConfig:
     model_id: str
     system: str
@@ -108,6 +137,7 @@ class AgentConfig:
     extra: dict = field(default_factory=dict)  # extra request fields
     max_steps: int = MAX_STEPS
     tools: dict[str, Tool] = field(default_factory=lambda: dict(TOOLS))  # built-ins + skill + MCP
+    context_window: int = 0  # the model's context size in tokens; 0 = unknown (no budget checks)
 
 
 @dataclass
@@ -191,6 +221,12 @@ class Agent:
         # it out). Should load it again or raise TiinyError. None = just fail the turn.
         self.reload_model: Callable[[], None] | None = None
         self.on_cancel: list[Callable[[], None]] = []  # e.g. release a question waiting in the viewer
+        # Calls that need no permission although their tool asks (e.g. writes in a phase's work folder).
+        self.auto_allow: Callable[[Tool, dict], bool] | None = None
+        self.budget: Budget | None = None  # context limits for this run (phased work); None = none
+        self.tokens = 0  # context used by the last model request
+        self._wrapped = False  # the wrap-up message was sent in this context
+        self._end_reason: str | None = None  # a tool asked to end the turn (end_turn)
 
     @property
     def messages(self) -> list[dict]:
@@ -204,6 +240,11 @@ class Agent:
 
     def clear(self) -> None:
         self.messages.clear()
+        self.tokens, self._wrapped = 0, False
+
+    def end_turn(self, reason: str) -> None:
+        """From a tool: end the turn with ``TurnEnd(reason)`` once this step's tools have run."""
+        self._end_reason = reason
 
     def _append(self, msg: dict) -> None:
         self.transcript.append(msg)
@@ -211,6 +252,7 @@ class Agent:
     # -- turn ------------------------------------------------------------
     def run(self, text: str) -> Iterator[Event]:
         self._cancel.clear()
+        self._end_reason = None
         self._append({"role": "user", "content": text})
         try:
             yield from self._steps()
@@ -224,13 +266,33 @@ class Agent:
             calls = msg.get("tool_calls") or []
             for call in calls:
                 yield from self._call(call)
-            if self._cancel.is_set():
-                yield TurnEnd("interrupted")
-                return
-            if not calls:
-                yield TurnEnd("done")
+            events, stop = self._after_step(calls)
+            yield from events
+            if stop:
                 return
         yield TurnEnd("max_steps")
+
+    def _after_step(self, calls: list) -> tuple[list[Event], bool]:
+        """Events to yield after a step, and whether the turn ends."""
+        if self._cancel.is_set():
+            return [TurnEnd("interrupted")], True
+        if self._end_reason:
+            return [TurnEnd(self._end_reason)], True
+        if not calls:
+            return [TurnEnd("done")], True
+        return self._budget_events()
+
+    def _budget_events(self) -> tuple[list[Event], bool]:
+        use = ContextUse(self.tokens, self.config.context_window)
+        state = self.budget.state(use) if self.budget else ""
+        pct = use.pct
+        if state == "stop":
+            return [Notice(f"Context {pct}% full — stopping here"), TurnEnd("context_full")], True
+        if state == "wrap_up" and not self._wrapped:
+            self._wrapped = True
+            self._append({"role": "user", "content": self.budget.wrap_up.format(pct=pct)})
+            return [Notice(f"Context {pct}% full — asked the model to wrap up")], False
+        return [], False
 
     def _stream_or_reload(self) -> Iterator[Event]:
         """Stream a reply; if the model has been unloaded meanwhile, reload it and retry once."""
@@ -255,7 +317,10 @@ class Agent:
             for chunk in stream:
                 if self._cancel.is_set():
                     break
-                yield from _chunk_events(chunk, acc)
+                for ev in _chunk_events(chunk, acc):
+                    if isinstance(ev, Usage):
+                        self.tokens = ev.total
+                    yield ev
         return acc.message()
 
     # -- tools -----------------------------------------------------------
@@ -289,8 +354,11 @@ class Agent:
         except (KeyError, TypeError, ValueError) as e:
             return f"Error: bad arguments for {name}: {e}", False, False
 
+    def _auto_allowed(self, tool: Tool, args: dict) -> bool:
+        return self.auto_allow is not None and self.auto_allow(tool, args)
+
     def _permitted(self, tool: Tool, args: dict) -> bool:
-        if tool.grant is None:
+        if tool.grant is None or self._auto_allowed(tool, args):
             return True
         preview = tool.preview(args, self.config.ctx)  # may raise ToolError (e.g. edit target missing)
         if tool.grant in self.granted and not preview.outside:

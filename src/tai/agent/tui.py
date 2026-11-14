@@ -32,7 +32,8 @@ from tai.agent.loop import (Agent, Decision, Event, Notice, ReasoningDelta, Text
 from tai.agent.device import MUTATING, DeviceCommands
 from tai.models import short_tokens
 from tai.agent.history import PromptHistory
-from tai.agent.tools import Preview, Tool
+from tai.agent.phases import PhaseRunner
+from tai.agent.tools import Preview, Tool, ToolError
 from tai.client import TiinyError
 from tai.loader import LoadCancelled, ModelLoader
 from tai.models import ResolveError
@@ -40,8 +41,11 @@ from tai.models import ResolveError
 RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
 
 HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · ↑/↓ earlier prompts · drag to select, Ctrl+C copy · Esc interrupt · Ctrl+C (nothing selected) quit
-**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/think on|off` reasoning from the next request · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
+**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/think on|off` reasoning from the next request · `/phase start <goal>` phased work (`/phase help`) · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
+
+PHASE_HELP = """**Phased work** — each phase starts with a fresh context and works from `.tai/work/<task>/` (plan.md, notes, tools, tests) and the earlier phases' handoffs. It starts with explore and plan; the plan defines the rest.
+`/phase start <goal>` start · `/phase` status · `/phase next` start the next phase · `/phase redo` restart this phase fresh (its files stay) · `/phase resume` continue the latest task in this folder · `/phase stop` leave phased mode"""
 
 
 @dataclass
@@ -64,6 +68,7 @@ class AppInfo:
     on_prompt: Callable[[str], None] = lambda text: None  # saves a typed prompt to the history
     context_window: int = 0  # the agent model's context size in tokens; 0 if unknown
     can_think: bool = False  # the model's thinking can be switched (/think)
+    on_new_context: Callable[[str], None] = lambda label: None  # a phase starts: save it as a new session
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -81,6 +86,24 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def action_answer(self, yes: bool) -> None:
         self.dismiss(yes)
+
+
+class PhaseGateScreen(ModalScreen[str]):
+    """Between phases: start the next one now (y), always without asking (a), or not yet (n)."""
+    BINDINGS = [Binding("y", "answer('yes')", "Yes"), Binding("a", "answer('always')", "Always"),
+                Binding("n", "answer('no')", "No"), Binding("escape", "answer('no')", "No", show=False)]
+
+    def __init__(self, question: str) -> None:
+        super().__init__()
+        self.question = question
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="permission"):
+            yield Static(Text(self.question), id="perm-title")
+            yield Static("[bold]y[/] yes   [bold]a[/] always (this run)   [bold]n[/] not now", id="perm-keys")
+
+    def action_answer(self, choice: str) -> None:
+        self.dismiss(choice)
 
 
 class TuiLoaderUI:
@@ -249,7 +272,7 @@ class AgentApp(App):
     Collapsible { border: none; padding: 0; margin: 0 0 0 2; }
     #status { height: 1; padding: 0 1; color: $text-muted; }
     #prompt { height: auto; max-height: 12; margin: 0 1; }
-    PermissionScreen, ConfirmScreen { align: center middle; }
+    PermissionScreen, ConfirmScreen, PhaseGateScreen { align: center middle; }
     #permission { width: 90%; height: auto; max-height: 85%; border: thick $warning; background: $surface;
                   padding: 1 2; }
     #perm-body { height: auto; margin: 1 0; }  /* max-height set by PermissionScreen._fit_body */
@@ -274,6 +297,7 @@ class AgentApp(App):
         self._idle = ""  # the plain status shown when nothing is going on
         self.tokens = 0  # context used by the last model request (0 until the first one)
         agent.reload_model = self._reload_agent_model
+        self.phases = PhaseRunner(agent, agent.config.ctx.root)
 
     # -- clipboard -------------------------------------------------------
     async def action_copy_or_quit(self) -> None:
@@ -376,11 +400,20 @@ class AgentApp(App):
             cmd, _, arg = text[1:].partition(" ")
             self._command(cmd, arg.strip())
             return
+        if self._refuse_busy():
+            return
+        self._start_turn(text)
+
+    def _refuse_busy(self) -> bool:
         if self.busy or self.device_busy:
             msg = "Still working — press Esc to interrupt first." if self.busy else "Wait for /tiiny to finish."
             self.notify(msg, severity="warning")
-            return
-        self._add(Static(Text(f"› {text}"), classes="user"))
+            return True
+        return False
+
+    def _start_turn(self, text: str, shown: str | None = None) -> None:
+        """Send ``text`` to the agent; the log shows ``shown`` instead when given."""
+        self._add(Static(Text(shown or f"› {text}"), classes="user"))
         self.busy = True
         self._busy("working…")
         self.run_turn(text)
@@ -395,6 +428,8 @@ class AgentApp(App):
             self._tiiny(arg)
         elif cmd == "think":
             self._think_cmd(arg.strip().lower())
+        elif cmd == "phase":
+            self._phase_cmd(arg)
         elif cmd in dict(self.info.skills):
             self._submit(f"Use the `{cmd}` skill." + (f" {arg}" if arg else ""))
         else:
@@ -408,7 +443,12 @@ class AgentApp(App):
 
     def _title(self) -> str:
         mode = self.thinking
-        return self.info.title + ("" if mode is None else f" · thinking {'on' if mode else 'off'}")
+        title = self.info.title + ("" if mode is None else f" · thinking {'on' if mode else 'off'}")
+        label = self.phases.label() if self.phases.active else ""
+        return title + (f" · {label}" if label else "")
+
+    def _update_title(self) -> None:
+        self.query_one("#title", Static).update(self._title())
 
     def _think_cmd(self, arg: str) -> None:
         """/think on|off: switch reasoning for this run, from the next model request."""
@@ -420,9 +460,101 @@ class AgentApp(App):
         else:
             extra = self.agent.config.extra
             extra["chat_template_kwargs"] = {**extra.get("chat_template_kwargs", {}), "enable_thinking": arg == "on"}
-            self.query_one("#title", Static).update(self._title())
+            self._update_title()
             when = " from the next step" if self.busy else ""
             self.notify(f"Thinking {arg}{when} (this run; `tai config set agent.think` for the default).")
+
+    # -- phased work -----------------------------------------------------
+    def _phase_cmd(self, arg: str) -> None:
+        sub, _, rest = arg.strip().partition(" ")
+        handlers = {"": self._phase_status, "status": self._phase_status, "help": lambda: self._note(PHASE_HELP),
+                    "start": lambda: self._phase_start(rest.strip()), "next": self._phase_next,
+                    "redo": self._phase_begin, "resume": self._phase_resume, "stop": self._phase_stop}
+        handler = handlers.get(sub)
+        if handler is None:
+            self.notify(f"Unknown: /phase {sub} — try /phase help", severity="warning")
+        elif sub in ("", "status", "help") or not self._refuse_busy():
+            handler()
+
+    def _phase_status(self) -> None:
+        self._note(self.phases.status() if self.phases.active else
+                   "No phased work running. `/phase start <goal>` or `/phase resume`.\n\n" + PHASE_HELP)
+
+    def _phase_start(self, goal: str) -> None:
+        if not goal:
+            self.notify("Usage: /phase start <goal>", severity="warning")
+            return
+        work = self.phases.start(goal)
+        self._note(f"Phased work in `{self.phases.rel(work.folder)}/`\n\n{self.phases.status()}")
+        self._phase_begin()
+
+    def _phase_resume(self) -> None:
+        if self.phases.resume() is None:
+            self._note("No phased work in `.tai/work/` here. Start with `/phase start <goal>`.")
+            return
+        self._note(self.phases.status())
+        self._phase_next()
+
+    def _phase_next(self) -> None:
+        if not self.phases.active:
+            self._note("No phased work running. `/phase start <goal>` or `/phase resume`.")
+            return
+        if self.phases.in_progress():
+            self._note(f"Phase **{self.phases.work.current.name}** isn't finished. Ask the agent to finish it (it calls "
+                       "`phase_done`), or `/phase redo` to restart it with a fresh context.")
+            return
+        self._phase_begin()
+
+    def _phase_begin(self) -> None:
+        """Start the current phase with a fresh context (also /phase redo)."""
+        if not self.phases.active:
+            self._note("No phased work running. `/phase start <goal>` or `/phase resume`.")
+            return
+        try:
+            prompt = self.phases.begin()
+        except ToolError as e:
+            self._note(str(e))
+            return
+        label, phase = self.phases.label(), self.phases.work.current
+        self.info.on_new_context(f"{label} — {self.phases.work.goal}")
+        self.tokens = 0
+        self._update_title()
+        self._start_turn(prompt, shown=f"▶ {label}: {phase.goal}")
+
+    def _phase_stop(self) -> None:
+        if self.phases.active:
+            folder = self.phases.rel(self.phases.work.folder)
+            self.phases.stop()
+            self._update_title()
+            self._note(f"Left phased mode. The work stays in `{folder}/` (`/phase resume` to continue).")
+
+    def _phase_after_turn(self, reason: str) -> None:
+        """A turn ended during phased work: offer the next phase, or say why the phase stopped."""
+        if reason == "context_full":
+            self._note("The phase stopped with the context nearly full. Its files stay: `/phase redo` "
+                       "restarts it with a fresh context, or tell the agent what to do.")
+            return
+        if reason != "phase_done":
+            return
+        done = next(p for p in reversed(self.phases.work.phases) if p.status == "done")
+        self._update_title()
+        nxt = self.phases.work.current
+        if nxt is None:
+            self._note(f"**All phases done.**\n\n{self.phases.status()}")
+            return
+        self._note(f"**Phase {done.name} done.** Next: **{nxt.name}** — {nxt.goal}")
+        if self.phases.auto:
+            self._phase_begin()
+        else:
+            self.push_screen(PhaseGateScreen(f"Start phase {nxt.name} now (fresh context)?"), self._gate_answer)
+
+    def _gate_answer(self, choice: str | None) -> None:
+        if choice == "always":
+            self.phases.auto = True
+        if choice in ("yes", "always"):
+            self._phase_begin()
+        else:
+            self._status("ready — `/phase next` starts the next phase")
 
     def _tiiny(self, arg: str) -> None:
         sub, _ = DeviceCommands.split(arg)
@@ -595,8 +727,11 @@ class AgentApp(App):
         if ev.reason == "error":
             self._add(Static(Text(f"error: {ev.error}"), classes="tool-fail"))
         notes = {"done": "ready", "interrupted": "■ interrupted — ready",
-                 "max_steps": "■ stopped: step limit reached — ready", "error": "■ error — ready"}
+                 "max_steps": "■ stopped: step limit reached — ready", "error": "■ error — ready",
+                 "context_full": "■ stopped: context nearly full — ready"}
         self._status(notes.get(ev.reason, "ready"))
+        if self.phases.active:
+            self._phase_after_turn(ev.reason)
 
     # -- actions ---------------------------------------------------------
     def action_interrupt(self) -> None:

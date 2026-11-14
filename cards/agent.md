@@ -24,7 +24,7 @@ flowchart LR
 
 ## Promises (keep them true)
 
-- Reads (read, grep, glob, ls, skill, read-only MCP tools) never ask. **write/edit** (grant group `files`) and **bash** (group `bash`) ask first, showing a unified diff or the command. **web_search/web_fetch** (group `web`) ask too, showing the query or URL, since both send something off the machine.
+- Reads (read, grep, glob, ls, skill, read-only MCP tools) and `phase_done` never ask; neither do write/edit inside an active phase's work folder. **write/edit** (grant group `files`) and **bash** (group `bash`) ask first, showing a unified diff or the command. **web_search/web_fetch** (group `web`) ask too, showing the query or URL, since both send something off the machine.
 - "Always" (`a`) covers that group for the rest of the session (`Agent.granted`), **except** writes outside the project root (`Preview.outside`). Those ask every time, and the modal doesn't offer "always" for them.
 - The modal's preview (`#perm-body`) gets its max height from the screen (`PermissionScreen._fit_body`, on mount and resize): 85% of the rows minus 8 rows of chrome, capped at 30, and it scrolls. A fixed 30 used to push the y/a/n line off the dialog in terminals under ~45 rows. `ConfirmScreen` is centred like it.
 - A denied call is never run. The model is told `DENIED` and asked not to retry.
@@ -66,6 +66,16 @@ flowchart LR
 - `web_search` posts the query to DuckDuckGo's plain HTML page (`html.duckduckgo.com/html/`, no key) and parses `a.result__a` + `.result__snippet` with the stdlib `HTMLParser`. It unwraps `//duckduckgo.com/l/?uddg=` links and drops ads (`y.js`). Any status other than 200 (e.g. 202 when rate-limited) is a ToolError. If DuckDuckGo changes the page, this parser is what breaks: `test_agent_web.py` has a sample of the real markup (checked live 2026-11-11).
 - `web_fetch` only fetches http(s), reads at most 5 MB, and refuses types that aren't text. HTML becomes text: script/style/head/nav/aside dropped, line breaks at block elements, whitespace collapsed like a browser except in `<pre>` (code keeps its indentation), and empty icon bullets removed. It returns 20K characters per call; `offset` continues.
 - No new dependencies (httpx + stdlib). The system prompt tells the model to search, fetch, and cite URLs instead of guessing.
+
+## Phased work (`agent/phases.py`)
+
+- `/phase start <goal>` makes `.tai/work/<date>-<slug>/` (`notes/`, `tools/`, `tests/`, never reusing a folder) and runs phases one by one. **Each phase starts with an empty message list** (`PhaseRunner.begin` → `Agent.clear`): its first message (`PhaseRunner.prompt`) carries the task, the phase goal, every earlier phase's handoff and files, the later phases, and `plan.md` (20K chars). Everything else must be in files. The aim is a whole context window per phase, since the device's windows are small and there is no compaction.
+- `state.json` is written only by tai: goal + phases (`name`, `goal`, `status` pending/active/done, `handoff`, `files`). The model owns `plan.md` and the rest of the folder. The folder is in the project on purpose, so the user can read it and commit it if they want.
+- Phases: `explore` and `plan` are fixed (`FIRST_PHASES`). The model ends a phase with the `phase_done` tool (handoff, files, `next_phases`), which `Agent.end_turn("phase_done")`s the turn after that step. `next_phases` replaces the phases after the current one; the plan phase must give them, or the tool returns an error.
+- While attached, the runner adds the `# Phased work` section to the system prompt and the `phase_done` tool, sets `Agent.auto_allow` so **write/edit inside the work folder don't ask** (everything else asks as usual), and sets `Agent.budget`. `/phase stop` removes all of it; the folder stays.
+- Context budget (`loop.Budget`, only during phased work): after a step with tool calls, at 80% of `AgentConfig.context_window` the loop appends one user message asking the model to write its notes and call `phase_done`; at 95% it ends the turn with `TurnEnd("context_full")`. The TUI then offers `/phase redo` (fresh context, the files stay).
+- TUI: after `phase_done`, `PhaseGateScreen` asks y / a (always, this run: `PhaseRunner.auto`) / n before starting the next phase; `/phase next` starts it later. `/phase next` refuses while the current phase is still in progress in this context (`in_progress`). The title shows `phase 2/4 · plan`. Each phase is saved as its own agent session named after it (`AppInfo.on_new_context`, set in `command.py`). `/phase resume` re-attaches the newest `state.json` in this folder and starts its current phase fresh.
+- Tests: `tests/test_agent_phases.py` (budget, end_turn, auto_allow, runner, and the TUI flow with the gate).
 
 ## When the agent's model gets swapped out
 
