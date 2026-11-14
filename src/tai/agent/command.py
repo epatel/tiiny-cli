@@ -168,7 +168,8 @@ def _build_app(app, s: AgentSession, ext: Extensions, req: AgentRequest) -> Agen
     transcript = Transcript(s.messages, on_message=sink.save, on_replace=sink.compacted)
     agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver
     compact.Compactor(agent, compact_at(app))
-    info = AppInfo(_title(s, ext), initial=req.text, on_clear=lambda: app.store.clear_messages(sink.sid),
+    info = AppInfo(_title(s, ext), initial=None if req.phase else req.text,
+                   phase_goal=req.text if req.phase else None, on_clear=lambda: app.store.clear_messages(sink.sid),
                    skills=[(k.name, k.description) for k in ext.skills], servers=ext.server_lines(),
                    history=app.store.prompts(s.root), on_prompt=lambda text: app.store.add_prompt(s.root, text),
                    context_window=s.model.context, can_think=bool(s.model.thinking.get("toggleable")),

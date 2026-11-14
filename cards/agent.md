@@ -24,7 +24,7 @@ flowchart LR
 
 ## Promises (keep them true)
 
-- Reads (read, grep, glob, ls, skill, read-only MCP tools) and `phase_done` never ask; neither do write/edit inside an active phase's work folder. **write/edit** (grant group `files`) and **bash** (group `bash`) ask first, showing a unified diff or the command. **web_search/web_fetch** (group `web`) ask too, showing the query or URL, since both send something off the machine.
+- Reads (read, grep, glob, ls, skill, read-only MCP tools) and `phase_done` never ask; neither do write/edit inside an active phase's work folder. **write/edit** (grant group `files`) and **bash** (group `bash`) ask first, showing a unified diff or the command. **web_search/web_fetch** (group `web`) ask too, showing the query or URL, since both send something off the machine. **start_phases** (group `phases`) asks before switching to phased work.
 - "Always" (`a`) covers that group for the rest of the session (`Agent.granted`), **except** writes outside the project root (`Preview.outside`). Those ask every time, and the modal doesn't offer "always" for them.
 - The modal's preview (`#perm-body`) gets its max height from the screen (`PermissionScreen._fit_body`, on mount and resize): 85% of the rows minus 8 rows of chrome, capped at 30, and it scrolls. A fixed 30 used to push the y/a/n line off the dialog in terminals under ~45 rows. `ConfirmScreen` is centred like it.
 - A denied call is never run. The model is told `DENIED` and asked not to retry.

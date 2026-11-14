@@ -46,7 +46,8 @@ HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
 
 PHASE_HELP = """**Phased work** — each phase starts with a fresh context and works from `.tai/work/<task>/` (plan.md, notes, tools, tests) and the earlier phases' handoffs. It starts with explore and plan; the plan defines the rest.
-`/phase start <goal>` start · `/phase` status · `/phase next` start the next phase · `/phase redo` restart this phase fresh (its files stay) · `/phase resume` continue the latest task in this folder · `/phase stop` leave phased mode"""
+`/phase start <goal>` start · `/phase` status · `/phase next` start the next phase · `/phase redo` restart this phase fresh (its files stay) · `/phase resume` continue the latest task in this folder · `/phase stop` leave phased mode
+From the shell: `tai agent --phase "<goal>"`. For a big task the agent may also offer to switch (you're asked first)."""
 
 
 @dataclass
@@ -70,6 +71,7 @@ class AppInfo:
     context_window: int = 0  # the agent model's context size in tokens; 0 if unknown
     can_think: bool = False  # the model's thinking can be switched (/think)
     on_new_context: Callable[[str], None] = lambda label: None  # a phase starts: save it as a new session
+    phase_goal: str | None = None  # `tai agent --phase TASK`: start phased work on this goal
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -333,7 +335,9 @@ class AgentApp(App):
         self._status("ready")
         self.set_interval(1.0, self._render_activity)
         self.query_one("#prompt", PromptArea).focus()
-        if self.info.initial:
+        if self.info.phase_goal:
+            self._phase_start(self.info.phase_goal)
+        elif self.info.initial:
             self._submit(self.info.initial)
 
     @property
@@ -514,11 +518,11 @@ class AgentApp(App):
         self._note(self.phases.status() if self.phases.active else
                    "No phased work running. `/phase start <goal>` or `/phase resume`.\n\n" + PHASE_HELP)
 
-    def _phase_start(self, goal: str) -> None:
+    def _phase_start(self, goal: str, background: str = "") -> None:
         if not goal:
             self.notify("Usage: /phase start <goal>", severity="warning")
             return
-        work = self.phases.start(goal)
+        work = self.phases.start(goal, background)
         self._note(f"Phased work in `{self.phases.rel(work.folder)}/`\n\n{self.phases.status()}")
         self._phase_begin()
 
@@ -771,6 +775,8 @@ class AgentApp(App):
         self._status(notes.get(ev.reason, "ready"))
         if self.phases.active:
             self._phase_after_turn(ev.reason)
+        elif ev.reason == "start_phases" and self.phases.requested is not None:
+            self._phase_start(*self.phases.take_request())
 
     # -- actions ---------------------------------------------------------
     def action_interrupt(self) -> None:

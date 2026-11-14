@@ -8,7 +8,7 @@ import pytest
 from tai.agent.loop import Agent, AgentConfig, Budget, Decision, Notice, ToolEnd, Transcript, TurnEnd
 from tai.agent.phases import STATE, PhaseRunner, Work, slug
 from tai.agent.tools import ToolContext
-from tai.agent.tui import AgentApp, AppInfo, PhaseGateScreen
+from tai.agent.tui import AgentApp, AppInfo, PermissionScreen, PhaseGateScreen
 
 
 def text_reply(*parts):
@@ -162,14 +162,20 @@ async def wait_until(pilot, cond, timeout=5.0):
     raise AssertionError("timed out waiting for the UI")
 
 
+def tui(project, *replies, **info):
+    """An AgentApp on a fake client; returns (app, client)."""
+    client = FakeClient(*replies)
+    cfg = AgentConfig(model_id="m", system="SYS", ctx=ToolContext(root=project))
+    agent = Agent(client, cfg, lambda *a: Decision.DENY, Transcript([]))
+    return AgentApp(agent, AppInfo("tai agent · test", **info)), client
+
+
 def test_phase_flow_in_the_tui(project):
     contexts = []
 
     async def main():
-        client = FakeClient(tool_reply("phase_done", {"handoff": "explored"}), text_reply("Which option?"))
-        cfg = AgentConfig(model_id="m", system="SYS", ctx=ToolContext(root=project))
-        agent = Agent(client, cfg, lambda *a: Decision.DENY, Transcript([]))
-        app = AgentApp(agent, AppInfo("tai agent · test", on_new_context=contexts.append))
+        app, client = tui(project, tool_reply("phase_done", {"handoff": "explored"}), text_reply("Which option?"),
+                          on_new_context=contexts.append)
         async with app.run_test(size=(100, 30)) as pilot:
             app._submit("/phase start add a flag")
             await wait_until(pilot, lambda: isinstance(app.screen, PhaseGateScreen))
@@ -182,3 +188,79 @@ def test_phase_flow_in_the_tui(project):
     asyncio.run(main())
     assert [c.split(" — ")[0] for c in contexts] == ["phase 1/2 · explore", "phase 2/2 · plan"]
     assert (next((project / ".tai" / "work").iterdir()) / STATE).is_file()
+
+
+# -- breaking a task down: start_phases and --phase ----------------------------
+def test_start_phases_is_offered_only_outside_phased_work(project):
+    agent, _ = make(project)
+    runner = PhaseRunner(agent, project)
+    assert "start_phases" in agent.config.tools
+    runner.start("goal")
+    assert "start_phases" not in agent.config.tools
+    runner.stop()
+    assert "start_phases" in agent.config.tools
+
+
+def test_start_phases_asks_and_ends_the_turn(project):
+    args = {"goal": "add completion", "reason": "touches many files", "background": "user wants zsh"}
+    agent, asked = make(project, tool_reply("start_phases", args))
+    runner = PhaseRunner(agent, project)
+    events = list(agent.run("add shell completion for every command"))
+    assert asked == ["start_phases"] and events[-1] == TurnEnd("start_phases")
+    assert runner.take_request() == ("add completion", "user wants zsh") and runner.requested is None
+
+
+def test_denied_start_phases_requests_nothing(project):
+    cfg = AgentConfig(model_id="m", system="SYS", ctx=ToolContext(root=project))
+    agent = Agent(FakeClient(tool_reply("start_phases", {"goal": "g", "reason": "r"}), text_reply("ok")), cfg,
+                  lambda *a: Decision.DENY)
+    runner = PhaseRunner(agent, project)
+    assert list(agent.run("big task"))[-1] == TurnEnd("done") and runner.requested is None
+
+
+def test_background_reaches_every_phase(project):
+    agent, _ = make(project)
+    runner = PhaseRunner(agent, project)
+    work = runner.start("goal", "user wants zsh only")
+    assert "user wants zsh only" in runner.begin()
+    assert Work.load(work.folder).background == "user wants zsh only"
+
+
+def test_agent_switches_to_phases_in_the_tui(project):
+    contexts = []
+
+    async def main():
+        args = {"goal": "add completion", "reason": "many files", "background": "zsh first"}
+        app, client = tui(project, tool_reply("start_phases", args), text_reply("Exploring."),
+                          on_new_context=contexts.append)
+        async with app.run_test(size=(100, 30)) as pilot:
+            app._submit("add shell completion")
+            await wait_until(pilot, lambda: isinstance(app.screen, PermissionScreen))
+            assert app.screen.preview.title == "Switch to phased work?"
+            await pilot.press("y")
+            await wait_until(pilot, lambda: not app.busy and len(client.requests) == 2)
+            first = client.requests[1]["messages"]
+            assert len(first) == 2 and "Phase 1/2: explore" in first[1]["content"]
+            assert "zsh first" in first[1]["content"] and app.phases.active
+    asyncio.run(main())
+    assert contexts[0].startswith("phase 1/2 · explore — add completion")
+
+
+def test_phase_goal_starts_phased_work_on_launch(project):
+    async def main():
+        app, client = tui(project, text_reply("Exploring."), phase_goal="add a flag")
+        async with app.run_test(size=(100, 30)) as pilot:
+            await wait_until(pilot, lambda: not app.busy and client.requests)
+            assert app.phases.active and app.phases.work.goal == "add a flag"
+            assert "Phase 1/2: explore" in client.requests[0]["messages"][1]["content"]
+    asyncio.run(main())
+
+
+def test_phase_flag_needs_a_new_task():
+    from click.testing import CliRunner
+
+    import tai.cli as cli_mod
+    r = CliRunner().invoke(cli_mod.cli, ["agent", "--phase"])
+    assert r.exit_code == 2 and "--phase needs a TASK" in r.output
+    r = CliRunner().invoke(cli_mod.cli, ["agent", "--phase", "-c", "goal"])
+    assert r.exit_code == 2 and "/phase resume" in r.output

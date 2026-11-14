@@ -20,7 +20,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from tai.agent.loop import Agent, Budget, TurnEnd
-from tai.agent.tools import Tool, ToolContext, ToolError
+from tai.agent.tools import Preview, Tool, ToolContext, ToolError
 
 WORK_DIR = Path(".tai") / "work"
 STATE = "state.json"
@@ -74,9 +74,10 @@ class Work:
     goal: str
     phases: list[Phase]
     created: str = ""
+    background: str = ""  # what the conversation that started it knew (start_phases)
 
     @classmethod
-    def create(cls, root: Path, goal: str) -> Work:
+    def create(cls, root: Path, goal: str, background: str = "") -> Work:
         base = root / WORK_DIR / f"{datetime.date.today().isoformat()}-{slug(goal)}"
         folder, n = base, 1
         while folder.exists():
@@ -85,14 +86,15 @@ class Work:
         for sub in ("notes", "tools", "tests"):
             (folder / sub).mkdir(parents=True)
         work = cls(folder, goal, [Phase(n, g) for n, g in FIRST_PHASES],
-                   datetime.datetime.now().isoformat(timespec="seconds"))
+                   datetime.datetime.now().isoformat(timespec="seconds"), background)
         work.save()
         return work
 
     @classmethod
     def load(cls, folder: Path) -> Work:
         data = json.loads((folder / STATE).read_text())
-        return cls(folder, data["goal"], [Phase(**p) for p in data["phases"]], data.get("created", ""))
+        return cls(folder, data["goal"], [Phase(**p) for p in data["phases"]], data.get("created", ""),
+                   data.get("background", ""))
 
     @classmethod
     def latest(cls, root: Path) -> Work | None:
@@ -100,7 +102,8 @@ class Work:
         return cls.load(states[-1].parent) if states else None
 
     def save(self) -> None:
-        data = {"goal": self.goal, "created": self.created, "phases": [asdict(p) for p in self.phases]}
+        data = {"goal": self.goal, "created": self.created, "background": self.background,
+                "phases": [asdict(p) for p in self.phases]}
         (self.folder / STATE).write_text(json.dumps(data, indent=2) + "\n")
 
     @property
@@ -112,6 +115,40 @@ class Work:
     def current(self) -> Phase | None:
         i = self.index
         return None if i is None else self.phases[i]
+
+
+def _earlier(phases: list[Phase]) -> list[str]:
+    """Prompt sections with the handoffs of the phases already done."""
+    done = [p for p in phases if p.status == "done"]
+    if not done:
+        return []
+    sections = ["## Earlier phases"]
+    for p in done:
+        files = f"\nFiles: {', '.join(p.files)}" if p.files else ""
+        sections.append(f"### {p.name}\n{p.handoff[:MAX_HANDOFF]}{files}")
+    return sections
+
+
+def _later(phases: list[Phase]) -> list[str]:
+    return ["## Later phases\n" + "\n".join(f"- {p.name}: {p.goal}" for p in phases)] if phases else []
+
+
+def _extras(work: Work) -> list[str]:
+    """The background from the conversation that started the work, and plan.md."""
+    sections = []
+    if work.background:
+        sections.append(f"## Background from the conversation that started this\n{work.background[:MAX_HANDOFF]}")
+    plan = work.folder / "plan.md"
+    if plan.is_file():
+        sections.append(f"## plan.md\n{plan.read_text(errors='replace')[:MAX_PLAN]}")
+    return sections
+
+
+def _offer_preview(args: dict, ctx: ToolContext) -> Preview:
+    body = (f"Goal: {args.get('goal', '')}\n\nWhy: {args.get('reason', '')}\n\n"
+            "Explore and plan first (the plan breaks the task down), then the planned phases. "
+            "Each phase starts with a fresh context and works from .tai/work/.")
+    return Preview("Switch to phased work?", body, "text")
 
 
 def _set_next_phases(work: Work, upcoming: list | None) -> None:
@@ -140,16 +177,23 @@ class PhaseRunner:
         self.work: Work | None = None
         self.finished = False  # the current phase called phase_done
         self.auto = False  # start the next phase without asking ("always" at the gate)
+        self.requested: tuple[str, str] | None = None  # (goal, background) from an approved start_phases
         self._base_system = agent.config.system
+        agent.config.tools["start_phases"] = self._offer_tool()
 
     @property
     def active(self) -> bool:
         return self.work is not None
 
     # -- lifecycle ---------------------------------------------------------
-    def start(self, goal: str) -> Work:
-        self._attach(Work.create(self.root, goal))
+    def start(self, goal: str, background: str = "") -> Work:
+        self._attach(Work.create(self.root, goal, background))
         return self.work
+
+    def take_request(self) -> tuple[str, str]:
+        """The (goal, background) the model asked to start phased work on; clears it."""
+        request, self.requested = self.requested, None
+        return request
 
     def resume(self, work: Work | None = None) -> Work | None:
         work = work or Work.latest(self.root)
@@ -162,6 +206,7 @@ class PhaseRunner:
         self.work = None
         self.agent.config.system = self._base_system
         self.agent.config.tools.pop("phase_done", None)
+        self.agent.config.tools["start_phases"] = self._offer_tool()
         self.agent.auto_allow = None
         self.agent.budget = None
 
@@ -170,6 +215,7 @@ class PhaseRunner:
         rel = self.rel(work.folder)
         self.agent.config.system = self._base_system + SYSTEM + f"- Work folder: {rel}/\n"
         self.agent.config.tools["phase_done"] = self._tool()
+        self.agent.config.tools.pop("start_phases", None)
         self.agent.auto_allow = self._in_work_folder
         self.agent.budget = Budget(wrap_up=WRAP_UP)
 
@@ -199,18 +245,7 @@ class PhaseRunner:
         parts = [f"# Phase {i + 1}/{len(work.phases)}: {phase.name}",
                  f"Task: {work.goal}", f"This phase: {phase.goal}",
                  f"Work folder: {rel}/ (plan.md, notes/, tools/, tests/)"]
-        done = [p for p in work.phases[:i] if p.status == "done"]
-        if done:
-            parts.append("## Earlier phases")
-            for p in done:
-                files = f"\nFiles: {', '.join(p.files)}" if p.files else ""
-                parts.append(f"### {p.name}\n{p.handoff[:MAX_HANDOFF]}{files}")
-        later = work.phases[i + 1:]
-        if later:
-            parts.append("## Later phases\n" + "\n".join(f"- {p.name}: {p.goal}" for p in later))
-        plan = work.folder / "plan.md"
-        if plan.is_file():
-            parts.append(f"## plan.md\n{plan.read_text(errors='replace')[:MAX_PLAN]}")
+        parts += _earlier(work.phases[:i]) + _later(work.phases[i + 1:]) + _extras(work)
         parts.append("Start by reading the files the handoffs point to that this phase needs.")
         return "\n\n".join(parts)
 
@@ -223,6 +258,25 @@ class PhaseRunner:
 
     def rel(self, path: Path) -> str:
         return str(path.relative_to(self.root)) if self.root in path.parents else str(path)
+
+    # -- the start_phases tool (offered outside phased work) ------------------
+    def _offer_tool(self) -> Tool:
+        return Tool(
+            "start_phases",
+            "Propose switching to phased work for a task too large for one conversation: several files or "
+            "components, an unclear design, or more reading than fits your context. Each phase then starts "
+            "fresh: explore, plan (which breaks the task down), then the planned phases. The user is asked "
+            "first. Don't use it for small or quick tasks.",
+            {"goal": {"type": "string", "description": "The task, complete and self-contained."},
+             "reason": {"type": "string", "description": "Why phases help here, in one or two sentences."},
+             "background": {"type": "string", "description": "What the user said and what you learned so "
+                                                             "far that the phases need (requirements, files)."}},
+            self._requested, preview=_offer_preview, grant="phases", required=["goal", "reason"])
+
+    def _requested(self, args: dict, ctx: ToolContext) -> str:
+        self.requested = (str(args["goal"]), str(args.get("background") or ""))
+        self.agent.end_turn(TurnEnd("start_phases"))
+        return "The user agreed. Phased work starts now in a fresh context; stop here."
 
     # -- the phase_done tool -----------------------------------------------
     def _tool(self) -> Tool:

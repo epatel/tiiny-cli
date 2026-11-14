@@ -510,17 +510,29 @@ def _resume_session(app: App, ref: str | None, opts: ChatOptions) -> SessionStat
 @click.option("--no-save", is_flag=True, help="Don't save this session (or its prompts) to the history.")
 @click.option("--think/--no-think", default=None,
               help="Toggle reasoning (default: the agent.think setting, else think, else the model's own).")
-@bundle("req", AgentRequest, "task", "model", "resume", "cont", "no_mcp", "no_save", "think")
+@click.option("--phase", is_flag=True, help="Phased work on TASK: explore, plan, then the phases the plan defines.")
+@bundle("req", AgentRequest, "task", "model", "resume", "cont", "no_mcp", "no_save", "think", "phase")
 @pass_app
 def agent(app: App, req: AgentRequest):
     """Coding agent in a full-screen UI: reads, edits and runs commands in this folder.
 
     Asks before every edit (shows the diff), shell command and non-read-only MCP tool.
     Uses MCP servers from .mcp.json / ~/.config/tai/mcp.json and skills from .claude/skills,
-    ~/.claude/skills and ~/.config/tai/skills. TASK, if given, is sent first."""
+    ~/.claude/skills and ~/.config/tai/skills. TASK, if given, is sent first; with --phase it is
+    the goal of phased work (each phase in a fresh context, see /phase help)."""
     from tai.agent.command import run_agent  # textual loads only for this command
 
+    if req.phase:
+        _check_phase(req)
+
     run_agent(app, req)
+
+
+def _check_phase(req: AgentRequest) -> None:
+    if not req.text:
+        raise click.UsageError("--phase needs a TASK: the goal, e.g. tai agent --phase \"add shell completion\"")
+    if req.resume or req.cont:
+        raise click.UsageError("--phase starts new phased work; use /phase resume inside the agent to continue.")
 
 
 @cli.command()

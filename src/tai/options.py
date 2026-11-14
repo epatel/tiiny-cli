@@ -172,6 +172,7 @@ class AgentRequest:
     no_mcp: bool = False
     no_save: bool = False
     think: bool | None = None  # --think/--no-think; None: agent.think, then think
+    phase: bool = False  # --phase: TASK is the goal of phased work
 
     @property
     def text(self) -> str | None:
