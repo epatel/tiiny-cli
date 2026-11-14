@@ -20,6 +20,20 @@ $ tai models
 
 The device only runs *loaded* models, and they share an NPU budget. `tai` loads whatever a command needs. When it doesn't fit, it picks the idle models that free the least NPU (so big models stay loaded), shows them, and asks. Pass `-y` to skip the prompt.
 
+## TL;DR
+
+You need Python 3.10+ and the official `tiiny` CLI, already paired with your device.
+
+```sh
+git clone https://github.com/epatel/tiiny-cli && cd tiiny-cli
+make setup                    # .venv + tai (add PYTHON=python3.12 if python3 is older than 3.10)
+make link                     # tai on PATH via ~/.local/bin
+tiiny connect <device-ip>     # once, if not done already: tai reuses this config
+tiiny login
+tai models                    # what's installed and loaded
+tai ask "hello"               # loads a chat model if needed (asks before unloading others)
+```
+
 ## Install
 
 Requires Python 3.10 or newer. macOS ships 3.9 (`/usr/bin/python3`, from the Xcode Command Line Tools), so install a newer one first, e.g. `brew install python` or `uv python install 3.12`. `make setup` uses `python3` from your PATH. To pick another one, run `make setup PYTHON=python3.12`.
