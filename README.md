@@ -22,14 +22,27 @@ The device only runs *loaded* models, and they share an NPU budget. `tai` loads 
 
 ## TL;DR
 
-You need Python 3.10+ and the official `tiiny` CLI, already paired with your device.
+You need Python 3.10+, the device's IP address and its API key.
 
 ```sh
 git clone https://github.com/epatel/tiiny-cli && cd tiiny-cli
 make setup                    # .venv + tai (add PYTHON=python3.12 if python3 is older than 3.10)
 make link                     # tai on PATH via ~/.local/bin
-tiiny connect <device-ip>     # once, if not done already: tai reuses this config
-tiiny login
+```
+
+Then tell `tai` the address and key, in one of two ways:
+
+- **With the official `tiiny` CLI:** run `tiiny connect <device-ip>` and `tiiny login` once. `tai` reads both from `~/.local/tiiny/config.json`, so there is nothing else to set.
+- **With the API key from the TiinyOS app:** put both in `~/.config/tai/.env` (used in every folder), or in a `.env` in the folder you run `tai` from:
+
+  ```sh
+  TAI_DEVICE=192.168.1.42       # the device's IP
+  TIINY_API_KEY=<your key>
+  ```
+
+  Environment variables override the `.env` files.
+
+```sh
 tai models                    # what's installed and loaded
 tai ask "hello"               # loads a chat model if needed (asks before unloading others)
 ```
