@@ -58,7 +58,7 @@ Implemented in `src/tai/mesh.py`: `Mesh3D.generate` runs the stages, `run` submi
 - `GET /v1/3d/tasks/{id}` → `data.status` (`queued`/`running`/`completed`/`failed`), `progress`, `message`; when completed, `result.output.artifacts[]`, each with `artifact_id`, `artifact_type` and `filename`.
 - `GET /v1/3d/tasks/{id}/artifacts/{artifact_id}` downloads an artifact. `GET /v1/3d/capabilities` lists the stages and their params. TRELLIS rejects params a stage doesn't list in `stage_specs[stage]` (`params` keys + `controls`), so `tai 3d` filters `inference_quality`/`seed` per stage (`MeshOptions.controls_for`).
 - Inputs per stage: shape takes `image`; texture and simplify take `shape_artifact`; export takes `shape_artifact` + `material_artifact` (texture's output), optionally `geometry_artifact` (simplify's output), and returns `mesh_glb`.
-- Rough timings: shape ≈ 4 min, texture ≈ 2 min, export ≈ 8 min. An unsimplified GLB is about 120 MB. With simplify (`target_faces: 200000`, ≈ 25 s) export drops to ≈ 25 s and the GLB to about 16 MB. Simplify outputs an artifact of type `geometry…`.
+- Rough timings: shape ≈ 4 min, texture ≈ 2 min, export ≈ 8 min (`inference_quality: fast`: shape 2:30, texture 1:14, export 4:34, 8m22s in all, 2026-11-08). An unsimplified GLB is about 120 MB. With simplify (`target_faces: 200000`, ≈ 25 s) export drops to ≈ 25 s and the GLB to about 16 MB. Simplify outputs an artifact of type `geometry…`.
 
 ### Video (`tai video`, `src/tai/video.py`)
 
