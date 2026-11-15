@@ -29,14 +29,17 @@ MAX_HANDOFF = 3_000  # characters per earlier handoff
 
 FIRST_PHASES = (
     ("explore", "Understand the task and everything it touches: read the relevant code, docs, tests and "
-                "configuration (and the web for outside APIs). Write what you learn to notes/explore.md: "
+                "configuration (and the web for outside APIs). Write what you learn to notes/explore.md in the "
+                "work folder: "
                 "the files involved and how they work, constraints, risks and open questions. "
-                "Do not change project files in this phase."),
-    ("plan", "Write plan.md: the goal, the approach, the decisions with their reasons, and the remaining "
-             "phases. Each phase gets one focused goal with a concrete deliverable and how to check it. "
-             "Where it helps, plan early phases that build tools (scripts in tools/) or tests that later "
-             "phases run. Ask the user about real choices before settling them. End with phase_done and "
-             "next_phases."),
+                "Do not change project files and do not write the task's deliverables in this phase: "
+                "later phases write them, in the project."),
+    ("plan", "Write a short plan.md in the work folder (at most about 60 lines): the goal, the approach, the decisions with "
+             "their reasons, and the remaining phases. Use as few phases as the task needs, often one to "
+             "three; each produces part of the task's deliverables in the project, with how to check it. "
+             "Plan a phase that only builds helper tools or tests when the task asks for tests or the "
+             "result can't be checked otherwise. Ask the user about real choices before settling them. "
+             "End with phase_done and next_phases."),
 )
 
 SYSTEM = """
@@ -45,10 +48,13 @@ You are working on a larger task in phases. Every phase starts with a fresh cont
 earlier phases is remembered except the work folder and the handoffs in the first message.
 - Focus on this phase's goal only, and do it thoroughly. Use as much context as the work needs:
   read the real code instead of guessing.
-- Everything a later phase needs must be in a file: plan.md, notes/, tools/ (helper scripts),
-  tests/. Writing inside the work folder needs no permission. Change project files only when the
-  phase's goal says so.
-- Tools and tests you build are for later phases: say in the handoff how to run them.
+- The task's deliverables always go in the project, at the paths the task names, never in the
+  work folder. The work folder is for plan.md, notes/ and helper scripts. Writing inside it needs
+  no permission. Change project files only when the phase's goal says so.
+- Everything a later phase needs must be in a file. If you build a helper script or test, say in
+  the handoff how to run it.
+- Spend your output on the deliverable: change files with edit rather than rewriting them, and
+  don't re-read files that the notes already cover unless you need their exact text.
 - When the phase's deliverable is done, call phase_done with a handoff (what was done, what the
   next phase must know, how to check it) and the files that matter. Then stop.
 - If you need the user's input, ask and stop; the phase continues after their answer.
@@ -154,13 +160,22 @@ def _offer_preview(args: dict, ctx: ToolContext) -> Preview:
 def _set_next_phases(work: Work, upcoming: list | None) -> None:
     """Replace the phases after the current one; the plan phase must give them."""
     i = work.index
+    if work.phases[i].name == "plan":
+        _check_plan(upcoming, last=i == len(work.phases) - 1)
     if upcoming is None:
-        if work.phases[i].name == "plan" and i == len(work.phases) - 1:
-            raise ToolError("The plan phase must list the remaining phases in next_phases.")
         return
     if not all(isinstance(p, dict) and p.get("name") and p.get("goal") for p in upcoming):
         raise ToolError("next_phases: every phase needs a name and a goal")
     work.phases[i + 1:] = [Phase(str(p["name"]), str(p["goal"])) for p in upcoming]
+
+
+def _check_plan(upcoming: list | None, last: bool) -> None:
+    """The plan phase defines at least one more phase (``last``: none are defined yet)."""
+    if upcoming is None and last:
+        raise ToolError("The plan phase must list the remaining phases in next_phases.")
+    if upcoming is not None and not upcoming:
+        raise ToolError("next_phases is empty. List at least one phase; if the deliverables are already "
+                        "complete in the project, list a 'review' phase that checks them against the task.")
 
 
 def slug(text: str, limit: int = 40) -> str:
@@ -248,7 +263,8 @@ class PhaseRunner:
         rel = self.rel(work.folder)
         parts = [f"# Phase {i + 1}/{len(work.phases)}: {phase.name}",
                  f"Task: {work.goal}", f"This phase: {phase.goal}",
-                 f"Work folder: {rel}/ (plan.md, notes/, tools/, tests/)"]
+                 f"Work folder: {rel}/ (plan.md, notes/, tools/, tests/). Paths are relative to the "
+                 f"project root, not the work folder: the plan is {rel}/plan.md, notes go in {rel}/notes/."]
         parts += _earlier(work.phases[:i]) + _later(work.phases[i + 1:]) + _extras(work)
         parts.append("Start by reading the files the handoffs point to that this phase needs.")
         return "\n\n".join(parts)

@@ -1,0 +1,2 @@
+{"mode": "plain",
+ "prompt": "\n# Working style\n- Write the deliverables the task asks for first; refine them after.\n- Change existing files with edit; don't rewrite a whole file to change part of it.\n- Don't build helper tools, checkers or scratch scripts unless the task asks for them. Test with the project's own test command.\n- Keep the project working: change it in small steps and run the tests after each.\n"}

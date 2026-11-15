@@ -52,6 +52,26 @@ def test_chat_stream_yields_chunks_until_done(client):
 
 
 @respx.mock
+def test_chat_stream_without_done_is_an_error(client):
+    """A reply cut off mid-stream must not look like a finished one (seen on the device)."""
+    body = f"data: {json.dumps({'choices': [{'delta': {'content': 'Hi'}}]})}\n\n"
+    respx.post(f"{BASE}/v1/chat/completions").mock(return_value=httpx.Response(200, text=body))
+    got = []
+    with pytest.raises(TiinyError, match="early"):
+        for chunk in client.chat_stream("m", [{"role": "user", "content": "x"}]):
+            got.append(chunk)
+    assert len(got) == 1
+
+
+@respx.mock
+def test_chat_stream_error_chunk_raises(client):
+    body = f"data: {json.dumps({'error': {'message': 'xh2a backend fail'}})}\n\n"
+    respx.post(f"{BASE}/v1/chat/completions").mock(return_value=httpx.Response(200, text=body))
+    with pytest.raises(TiinyError, match="xh2a backend fail"):
+        list(client.chat_stream("m", [{"role": "user", "content": "x"}]))
+
+
+@respx.mock
 def test_tts_uses_native_synthesize_and_config(client):
     route = respx.post(f"{BASE}/v1/synthesize").mock(return_value=httpx.Response(
         200, json={"success": True, "audio_data": base64.b64encode(b"RIFF").decode(), "duration": 1.0}))

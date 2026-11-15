@@ -42,6 +42,11 @@ def _launch_event(event: str, data: str) -> dict:
     return payload
 
 
+def _message(e: Any) -> str:
+    """The message of an error object from the device (a dict with "message", or anything else)."""
+    return str(e.get("message") or e) if isinstance(e, dict) else str(e)
+
+
 def _err(r: httpx.Response) -> TiinyError:
     try:
         body = r.json()
@@ -159,11 +164,21 @@ class TiinyClient:
         return self._json("POST", "/v1/chat/completions", json=body)
 
     def chat_stream(self, model: str, messages: list[dict], **extra) -> Iterator[dict]:
+        """Chunks of a streamed chat reply. Raises TiinyError when the device sends an error chunk
+        or the stream stops before ``[DONE]`` (seen: a reply cut off mid tool call, then empty
+        replies for a few seconds), so a broken reply isn't taken for a finished one."""
         body = {"model": model, "messages": messages, "stream": True, **extra}
-        for _event, data in self._sse("POST", "/v1/chat/completions", json=body):
-            if data.strip() == "[DONE]":
-                return
-            yield json.loads(data)
+        try:
+            for _event, data in self._sse("POST", "/v1/chat/completions", json=body):
+                if data.strip() == "[DONE]":
+                    return
+                chunk = json.loads(data)
+                if chunk.get("error"):
+                    raise TiinyError(f"the device sent an error mid-reply: {_message(chunk['error'])}")
+                yield chunk
+        except httpx.TransportError as e:
+            raise TiinyError(f"the connection to the device broke mid-reply: {e}") from e
+        raise TiinyError("the device ended the reply early (no [DONE]): it may be overloaded or restarting")
 
     def embed(self, model: str, inputs: list[str], **extra) -> dict:
         return self._json("POST", "/v1/embeddings", json={"model": model, "input": inputs, **extra})

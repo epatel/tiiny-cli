@@ -23,13 +23,42 @@ flowchart LR
 .venv/bin/python benchmarks/run.py                               # all tasks, both modes, 1 run each
 .venv/bin/python benchmarks/run.py -t ts-templates -n 3          # one task, 3 runs per mode
 .venv/bin/python benchmarks/run.py --mode phased --judge         # phased only, plus the model judge
+.venv/bin/python benchmarks/run.py -m Qwen3.6-35B-A3B-Turbo -m Qwen3.8-27B   # compare two models
 .venv/bin/python benchmarks/run.py --report ~/.local/share/tai/bench/20261114-2130
+.venv/bin/python benchmarks/run.py --quick -V lean -V checklist-lean -n 2   # quick suite, two variants
 ```
 
-- **Time:** a run can take a long time: tens of minutes per task and mode on the device. `--timeout` (minutes, default 60) cancels a run that takes longer.
-- **Results:** each run's repo, including phased work's `.tai/work/` folder, is kept under `~/.local/share/tai/bench/<time>/<task>/<mode>-<n>/`. Results are appended to `results.jsonl` as each run finishes, so an interrupted benchmark keeps what it has.
+## Quick suite and variants (for iterating)
+
+`--quick` runs four small tasks (`q-*`), a few minutes each on Qwen3.6-35B-A3B-Turbo, aimed at what went wrong in the full runs:
+
+| task | checks | aimed at |
+|---|---|---|
+| `q-ts-scopes` | 10 hidden `node --test` tests | scope lookup (`../`, outer scopes), plain's ts-templates failures |
+| `q-python-clock` | 12 hidden pytest tests | the clock seam and expiry, the python misses |
+| `q-research-ferry` | 5 questions, sources, a short summary | corrected and unreliable figures, deliverables in the right place |
+| `q-story-letter` | two chapters with rules | writing the deliverable before any scaffolding |
+
+A **variant** says how the agent is run, so ideas can be compared side by side with `-V` (repeatable; results are grouped by the variant's name). Variants are JSON files in `benchmarks/variants/`, or any `.json` path:
+
+```json
+{"mode": "checklist",
+ "prompt": "added to the system prompt",
+ "think": {"plan": true, "default": false},
+ "stop_after": "plan"}
+```
+
+- **mode:** `plain` (one conversation), `checklist` (the task with "write a short checklist first", then a review turn that checks the work against it), or `phased`.
+- **think:** thinking on or off per stage: a phase name (`explore`, `plan`, …), `work` or `review`, else `default`; unset keeps tai's setting.
+- **stop_after:** phased only: end after that phase, e.g. `plan-only` to test the early phases in a few minutes.
+
+Built in: `plain`, `phased`, `checklist`, `lean` and `checklist-lean` (plus working-style rules: deliverables first, edit rather than rewrite, no helper tools, keep the project working), `phased-think-plan`, `plan-only`.
+
+- **Time:** a run can take a long time: tens of minutes per task and mode on the device. `--timeout` (minutes, default 60; 0 = no limit) cancels a run that takes longer. The repo is still graded, but the score is for unfinished work: the run log says `timed out` and the summary counts such runs in its `timed out` column. Phased runs take several times longer than plain ones, so a tight limit hurts them most.
+- **Results:** each run's repo, including phased work's `.tai/work/` folder, is kept under `~/.local/share/tai/bench/<time>/<task>/<mode>-<n>/` (with several `-m`, under `<time>/<model>/…`). Results are appended to `results.jsonl` as each run finishes, so an interrupted benchmark keeps what it has.
+- **Transcript:** each run folder has `requests.jsonl`, one line per model call: the messages added since the previous call (`fresh: true` when the conversation was replaced, e.g. by a new phase or a compaction), the reply (text and tool calls), `usage`, the device's `timings` and the seconds it took. For example, `jq -r '[.n, .kind, .usage.completion_tokens, .seconds] | @tsv' requests.jsonl` shows where the time went.
 - **Models:** the agent model is loaded if needed. Like `tai agent`, it asks before unloading other models (`-y` skips the question).
-- **Settings:** the model and thinking settings are the same as `tai agent`'s (`default.agent`, `agent.think`), and `-m` picks another model.
+- **Settings:** the model and thinking settings are the same as `tai agent`'s (`default.agent`, `agent.think`), and `-m` picks another model (its name, or a part of it that matches only one model: `Qwen3.6` matches both Qwen3.6-35B-A3B and its Turbo). Repeat `-m` to compare models: each is loaded once and runs every task and mode before the next.
 
 ## Reading the summary
 
@@ -40,6 +69,11 @@ flowchart LR
 | judge | mean rubric score 1–10 from `--judge` (writing and research only) |
 | tokens | prompt + completion tokens over all requests. Prompt tokens are counted per request, so the cache is ignored |
 | requests, minutes | model calls and wall-clock time |
+| tok/s | writing speed (tokens written per second of writing, from the device's timings) |
+
+A third table, **process**, shows how the runs worked (`benchmarks/process.py`): `health` (aihealth's score of the finished code; code tasks only), `overhead` (share of written tokens that didn't go into a deliverable, by the task's `deliverables` globs), `rewrites` (whole-file writes of a file already written), `strays` (files left behind that aren't deliverables), and the time to the first deliverable.
+
+A second table, **written tokens by reply kind**, splits the tokens the model wrote by what each reply did: a tool call (`write`, `edit`, `bash`, `phase_done`, …) or plain `text`. Writing is the slow part on the device, so this shows where a run's time went.
 
 Device output varies from run to run, so use `-n 3` or more before drawing conclusions. The judge is the same model that did the work: use it to compare the two modes, not as an absolute score.
 
@@ -54,7 +88,7 @@ Device output varies from run to run, so use `-n 3` or more before drawing concl
 
 Each task folder holds:
 - `task.md`: the prompt, given word for word to both modes;
-- `task.json`: the domain, `hidden_tests` (the denominator, so tests that fail to import still count) and an optional judge rubric;
+- `task.json`: the domain, `suite` (`quick` for the `q-*` tasks), `deliverables` (globs of the files the task asks for, for the process metrics), `hidden_tests` (the denominator, so tests that fail to import still count) and an optional judge rubric;
 - `repo/`: the starting project;
 - `hidden/` (optional): tests installed only after the agent is done;
 - `grade.py`: prints `{"passed", "total", "notes"}`, using helpers from `grading.py`;

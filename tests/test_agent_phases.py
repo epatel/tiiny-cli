@@ -104,6 +104,14 @@ def test_start_creates_the_work_folder(project):
     assert runner.start("Add shell completion!").folder.name.endswith("-2")  # never reuses a folder
 
 
+def test_the_prompt_spells_out_the_work_folder_paths(project):
+    """Tools resolve paths against the project: a bare notes/explore.md landed in the project root."""
+    agent, _ = make(project)
+    runner = PhaseRunner(agent, project)
+    rel = runner.rel(runner.start("Add shell completion").folder)
+    assert f"{rel}/plan.md" in runner.prompt() and f"{rel}/notes/" in runner.prompt()
+
+
 def test_phase_done_ends_the_turn_and_the_next_phase_gets_the_handoff(project):
     agent, asked = make(project,
                         tool_reply("write", {"path": "PLACEHOLDER", "content": "# notes"}),
@@ -134,6 +142,8 @@ def test_plan_phase_must_define_the_rest(project):
     ctx = agent.config.ctx
     with pytest.raises(Exception, match="next_phases"):
         done.run({"handoff": "plan written"}, ctx)
+    with pytest.raises(Exception, match="review"):  # an empty plan ended research-rail with nothing delivered
+        done.run({"handoff": "plan written", "next_phases": []}, ctx)
     done.run({"handoff": "plan written", "next_phases": [{"name": "tests", "goal": "write failing tests"},
                                                           {"name": "build", "goal": "make them pass"}]}, ctx)
     assert [p.name for p in Work.load(work.folder).phases] == ["explore", "plan", "tests", "build"]

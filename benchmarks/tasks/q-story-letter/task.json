@@ -1,0 +1,3 @@
+{"domain": "writing", "suite": "quick", "summary": "Write a two-chapter short story from a brief: structure rules are checked, quality by the optional judge",
+ "deliverables": ["story/**"],
+ "judge": {"files": ["story/characters.md", "story/01.md", "story/02.md"], "rubric": ["plot: coherent, with the letter's mystery set up and paid off", "consistency: characters, names and details stay the same across chapters", "characters: each named character wants something and acts on it", "prose: vivid, varied and free of clichés and repetition"]}}

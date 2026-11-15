@@ -1,0 +1,1 @@
+{"domain": "python", "suite": "quick", "summary": "Add expiring reservations and a clock seam to an inventory store", "hidden_tests": 12, "deliverables": ["inventory/**", "tests/**"]}
