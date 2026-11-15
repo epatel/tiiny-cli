@@ -1,0 +1,7 @@
+{
+ "extends": "lean-shape",
+ "prompt_by_domain": {
+  "python": "\n# Python idioms\n- dict dispatch ({value: handler}) instead of if/elif chains over one value.\n- dataclasses for records, enums for fixed sets of values.\n- Comprehensions and built-ins (any, all, sum, min/max/sorted with key=) instead of loops with flags.\n- pathlib for paths, f-strings for text, `with` for files and other resources.\n- Keep logic in small pure functions and I/O at the edges, so the logic is easy to test.\n- Raise specific exceptions; don't catch a bare Exception.\n- Tests: plain pytest functions with assert, one behaviour each; monkeypatch and fixtures for setup.\n",
+  "typescript": "\n# TypeScript idioms\n- A Record or Map of handlers instead of long if/else or switch chains over one value.\n- Small typed helper functions; type data with interfaces, type aliases and discriminated unions; no `any`.\n- Optional chaining (?.) and nullish coalescing (??) for values that may be missing.\n- const by default; array methods (map, filter, find, some, every) instead of index loops.\n- Return early instead of nesting; keep each function to one level of abstraction.\n- Throw Error with a clear message; don't swallow errors.\n- Tests: one behaviour per test, with a name that says what it checks.\n"
+ }
+}

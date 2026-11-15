@@ -43,16 +43,20 @@ A **variant** says how the agent is run, so ideas can be compared side by side w
 
 ```json
 {"mode": "checklist",
+ "extends": "lean",
  "prompt": "added to the system prompt",
+ "prompt_by_domain": {"python": "added for python tasks", "typescript": "…"},
  "think": {"plan": true, "default": false},
  "stop_after": "plan"}
 ```
 
 - **mode:** `plain` (one conversation), `checklist` (the task with "write a short checklist first", then a review turn that checks the work against it), or `phased`.
 - **think:** thinking on or off per stage: a phase name (`explore`, `plan`, …), `work` or `review`, else `default`; unset keeps tai's setting.
+- **extends:** start from another variant: its prompts come first, its mode and thinking apply unless overridden.
+- **prompt_by_domain:** added to the system prompt for tasks of that `domain` (`task.json`), e.g. language idioms.
 - **stop_after:** phased only: end after that phase, e.g. `plan-only` to test the early phases in a few minutes.
 
-Built in: `plain`, `phased`, `checklist`, `lean` and `checklist-lean` (plus working-style rules: deliverables first, edit rather than rewrite, no helper tools, keep the project working), `phased-think-plan`, `plan-only`.
+Built in: `plain`, `phased`, `checklist`, `lean` and `checklist-lean` (plus working-style rules: deliverables first, edit rather than rewrite, no helper tools, keep the project working), `phased-think-plan`, `plan-only`, `lean-shape` (lean + code-shape rules: small functions, extract helpers, no copied logic, flat code, lookup tables) and `lean-idioms` (lean-shape + short Python/TypeScript idiom lists).
 
 - **Time:** a run can take a long time: tens of minutes per task and mode on the device. `--timeout` (minutes, default 60; 0 = no limit) cancels a run that takes longer. The repo is still graded, but the score is for unfinished work: the run log says `timed out` and the summary counts such runs in its `timed out` column. Phased runs take several times longer than plain ones, so a tight limit hurts them most.
 - **Results:** each run's repo, including phased work's `.tai/work/` folder, is kept under `~/.local/share/tai/bench/<time>/<task>/<mode>-<n>/` (with several `-m`, under `<time>/<model>/…`). Results are appended to `results.jsonl` as each run finishes, so an interrupted benchmark keeps what it has.

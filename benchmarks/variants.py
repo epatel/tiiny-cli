@@ -2,7 +2,9 @@
 
 A variant is a JSON file in ``variants/`` (or any path):
     {"mode": "plain" | "checklist" | "phased",
+     "extends": "lean",                             # start from another variant (its prompts come first)
      "prompt": "added to the system prompt",
+     "prompt_by_domain": {"python": "...", "typescript": "..."},  # added for tasks of that domain
      "think": {"plan": true, "default": false},   # per stage: a phase name, "work" or "review"
      "stop_after": "plan"}                         # phased: end after this phase (to test the early phases)
 The file name is the variant's name, and results are grouped by it.
@@ -25,6 +27,7 @@ class Variant:
     prompt: str = ""
     think: dict[str, bool] = field(default_factory=dict)
     stop_after: str = ""
+    prompt_by_domain: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls, spec: str) -> Variant:
@@ -34,10 +37,18 @@ class Variant:
             have = ", ".join(sorted(p.stem for p in VARIANTS_DIR.glob("*.json")))
             raise SystemExit(f"unknown variant {spec!r}; have: {have}")
         data = json.loads(path.read_text())
-        if data.get("mode", "plain") not in MODES:
+        base = cls.load(data["extends"]) if data.get("extends") else cls(path.stem)
+        mode = data.get("mode", base.mode)
+        if mode not in MODES:
             raise SystemExit(f"{path}: mode must be one of {', '.join(MODES)}")
-        return cls(path.stem, data.get("mode", "plain"), data.get("prompt", ""), data.get("think", {}),
-                   data.get("stop_after", ""))
+        by_domain = {d: base.prompt_by_domain.get(d, "") + data.get("prompt_by_domain", {}).get(d, "")
+                     for d in {*base.prompt_by_domain, *data.get("prompt_by_domain", {})}}
+        return cls(path.stem, mode, base.prompt + data.get("prompt", ""), {**base.think, **data.get("think", {})},
+                   data.get("stop_after", base.stop_after), by_domain)
+
+    def prompt_for(self, domain: str) -> str:
+        """What the variant adds to the system prompt for a task of ``domain``."""
+        return self.prompt + self.prompt_by_domain.get(domain, "")
 
     def extra(self, base: dict, stage: str) -> dict:
         """The request extras for ``stage``: thinking switched on or off if the variant says so."""

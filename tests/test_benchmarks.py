@@ -225,6 +225,18 @@ def test_a_variant_adds_its_prompt_and_switches_thinking_per_stage(task, tmp_pat
     assert "BE BRIEF" in s.client.requests[0][0]["content"]
 
 
+def test_a_variant_extends_another_and_adds_a_prompt_per_domain(tmp_path):
+    (tmp_path / "base.json").write_text('{"mode": "checklist", "prompt": "A", "think": {"work": true}}')
+    (tmp_path / "kid.json").write_text(json.dumps({"extends": str(tmp_path / "base.json"), "prompt": "B",
+                                                   "prompt_by_domain": {"python": "P"}}))
+    v = Variant.load(str(tmp_path / "kid.json"))
+    assert (v.name, v.mode, v.think) == ("kid", "checklist", {"work": True})
+    assert v.prompt_for("python") == "ABP" and v.prompt_for("writing") == "AB"
+    idioms = Variant.load("lean-idioms")
+    assert Variant.load("lean").prompt in idioms.prompt and "Code shape" in idioms.prompt
+    assert "TypeScript idioms" in idioms.prompt_for("typescript") and "Python" not in idioms.prompt_for("typescript")
+
+
 def test_process_metrics(task, tmp_path):
     task.deliverables = ["out.txt"]
     s = setup(tool_reply("write", {"path": "scratch.py", "content": "print(1)"}),

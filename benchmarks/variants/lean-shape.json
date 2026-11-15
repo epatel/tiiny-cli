@@ -1,0 +1,4 @@
+{
+ "extends": "lean",
+ "prompt": "\n# Code shape\n- Keep functions small, with one job each. When a change would make a function long or add many branches, extract a helper with a clear name instead.\n- Don't copy logic: reuse it or extract a shared function.\n- Keep code flat: guard clauses and early returns instead of nested if/else.\n- When branches only differ in data, use a lookup table instead of a long if/else or switch chain.\n- Pass few arguments; group related values in one object.\n"
+}

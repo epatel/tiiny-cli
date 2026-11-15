@@ -292,7 +292,7 @@ def run_task(run: Run, setup: Setup) -> RunResult:
     task, variant = run.task, run.spec
     repo, tmp = prepare(task, run.folder)
     agent, client = make_agent(setup, repo, tmp, sandbox_prefix(repo, tmp, task.folder.parent))
-    agent.config.system += variant.prompt
+    agent.config.system += variant.prompt_for(task.domain)
     if variant.mode != "phased" and setup.limits.compact:
         Compactor(agent, setup.limits.compact)
     driver = Driver(agent, setup.limits, setup.log)
