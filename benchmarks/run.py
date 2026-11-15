@@ -46,6 +46,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--judge", action="store_true", help="score tasks with a rubric using the model as judge")
     p.add_argument("--timeout", type=float, default=60, help="minutes per run (default 60; 0 = no limit)")
     p.add_argument("--out", type=Path, help="results folder (default: ~/.local/share/tai/bench/<time>)")
+    p.add_argument("--resume", action="store_true",
+                   help="with --out: skip the runs that already have a result there (continue a stopped benchmark)")
     p.add_argument("-y", "--yes", action="store_true", help="unload other models without asking")
     p.add_argument("--check", action="store_true", help="check every grader: baseline low, solution 100%%")
     p.add_argument("--report", type=Path, metavar="DIR", help="summarise the results in DIR and exit")
@@ -112,6 +114,7 @@ def pick_variants(args: argparse.Namespace) -> list[Variant]:
 def run_all(args: argparse.Namespace, tasks: list[harness.Task]) -> Path:
     folder = args.out or harness_home() / datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     folder.mkdir(parents=True, exist_ok=True)
+    done = finished(folder) if args.resume else set()
     models = []
     for query in args.model or [None]:  # one model at a time: each is loaded once, for all its runs
         setup = device_setup(args, query)
@@ -120,8 +123,17 @@ def run_all(args: argparse.Namespace, tasks: list[harness.Task]) -> Path:
         log(f"model {setup.model_id}; results in {folder}")
         base = folder / setup.model_name if len(args.model or []) > 1 else folder  # a folder per compared model
         for task, v, n in schedule(tasks, pick_variants(args), args.runs):
+            if (setup.model_name, task.name, v.name, n) in done:
+                continue
             run_one(args, setup, folder, harness.Run(task, v.name, base / task.name / f"{v.name}-{n}", n, v))
     return folder
+
+
+def finished(folder: Path) -> set[tuple[str, str, str, int]]:
+    """(model, task, variant, run) of every result in ``folder`` the device didn't break."""
+    if not (folder / "results.jsonl").is_file():
+        return set()
+    return {(r.model, r.task, r.mode, r.run) for r in load_results(folder) if not r.errored}
 
 
 RETRY_WAIT = 60  # seconds: the device has recovered from a broken reply within ~10 s
@@ -299,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
         report(load_results(args.report))
         return 0
     tasks = pick_tasks(args.task, args.quick)
+    if args.resume and not args.out:
+        raise SystemExit("--resume needs --out: the folder of the benchmark to continue")
     if args.check:
         return check(tasks)
     folder = run_all(args, tasks)

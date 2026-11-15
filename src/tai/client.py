@@ -64,6 +64,14 @@ def _err(r: httpx.Response) -> TiinyError:
     return TiinyError(f"HTTP {r.status_code} {r.request.method} {r.request.url.path}: {msg}")
 
 
+# Seconds without any data before a chat stream counts as dead. The device has dropped a stream while
+# keeping the connection open (a benchmark run waited 25 min). With return_progress it sends events
+# while reading the prompt too, so silence means trouble sooner; without, the first token can take
+# as long as the device's own ~10-minute request limit.
+STREAM_IDLE_PROGRESS = 180.0
+STREAM_IDLE = 600.0
+
+
 def iter_sse(lines: Iterator[str]) -> Iterator[tuple[str, str]]:
     """Yield (event, data) pairs from a text/event-stream line iterator."""
     event, data = "message", []
@@ -165,11 +173,13 @@ class TiinyClient:
 
     def chat_stream(self, model: str, messages: list[dict], **extra) -> Iterator[dict]:
         """Chunks of a streamed chat reply. Raises TiinyError when the device sends an error chunk
-        or the stream stops before ``[DONE]`` (seen: a reply cut off mid tool call, then empty
-        replies for a few seconds), so a broken reply isn't taken for a finished one."""
+        the stream stops before ``[DONE]`` (seen: a reply cut off mid tool call, then empty
+        replies for a few seconds), or no data arrives for a while, so a broken reply isn't taken for a finished one."""
         body = {"model": model, "messages": messages, "stream": True, **extra}
+        idle = STREAM_IDLE_PROGRESS if extra.get("return_progress") else STREAM_IDLE
         try:
-            for _event, data in self._sse("POST", "/v1/chat/completions", json=body):
+            for _event, data in self._sse("POST", "/v1/chat/completions", json=body,
+                                          timeout=httpx.Timeout(30.0, read=idle)):
                 if data.strip() == "[DONE]":
                     return
                 chunk = json.loads(data)

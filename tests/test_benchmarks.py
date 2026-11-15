@@ -152,6 +152,18 @@ def test_a_broken_run_never_overwrites_an_earlier_one(tmp_path):
     assert bench_run.keep_broken(tmp_path / "run-1").name == "run-1-error-2"
 
 
+def test_resume_skips_finished_runs_but_not_broken_ones(task, tmp_path, monkeypatch):
+    rows = [harness.RunResult(task.name, "plain", 1, model="fake", score=1.0),
+            harness.RunResult(task.name, "plain", 2, model="fake", ends=["error"])]
+    (tmp_path / "results.jsonl").write_text("\n".join(r.to_json() for r in rows))
+    monkeypatch.setattr(bench_run, "device_setup", lambda args, query: setup())
+    ran = []
+    monkeypatch.setattr(bench_run, "run_one", lambda args, s, folder, run: ran.append(run.number))
+    args = bench_run.parse_args(["--out", str(tmp_path), "--resume", "-n", "3", "-V", "plain"])
+    bench_run.run_all(args, [task])
+    assert ran == [2, 3]
+
+
 def test_the_report_leaves_out_runs_the_device_broke(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(bench_run.out, "width", 200)
     rows = [harness.RunResult("t", "plain", 1, score=1.0), harness.RunResult("t", "plain", 2, score=0.0, ends=["error"])]

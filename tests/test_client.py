@@ -5,7 +5,7 @@ import httpx
 import pytest
 import respx
 
-from tai.client import TiinyClient, TiinyError, iter_sse
+from tai.client import STREAM_IDLE_PROGRESS, TiinyClient, TiinyError, iter_sse
 from tai.config import Settings
 
 BASE = "http://tiiny.test"
@@ -61,6 +61,15 @@ def test_chat_stream_without_done_is_an_error(client):
         for chunk in client.chat_stream("m", [{"role": "user", "content": "x"}]):
             got.append(chunk)
     assert len(got) == 1
+
+
+@respx.mock
+def test_chat_stream_that_goes_silent_is_an_error(client):
+    respx.post(f"{BASE}/v1/chat/completions").mock(side_effect=httpx.ReadTimeout("silent"))
+    with pytest.raises(TiinyError, match="broke mid-reply"):
+        list(client.chat_stream("m", [{"role": "user", "content": "x"}], return_progress=True))
+    sent = respx.calls[0].request.extensions["timeout"]
+    assert sent["read"] == STREAM_IDLE_PROGRESS
 
 
 @respx.mock
