@@ -23,7 +23,7 @@ from pathlib import Path
 from tai.agent.compact import Compactor
 from tai.agent.loop import Agent, AgentConfig, Decision, Event, Notice, TurnEnd
 from tai.agent.phases import PhaseRunner
-from tai.agent.prompt import system_prompt
+from tai.agent.prompt import STYLE, system_prompt
 from tai.agent.tools import TOOLS, Tool, ToolContext, ToolError
 from process import measure
 from transcript import MeteredClient
@@ -292,6 +292,8 @@ def run_task(run: Run, setup: Setup) -> RunResult:
     task, variant = run.task, run.spec
     repo, tmp = prepare(task, run.folder)
     agent, client = make_agent(setup, repo, tmp, sandbox_prefix(repo, tmp, task.folder.parent))
+    if not variant.style:
+        agent.config.system = agent.config.system.replace(STYLE, "", 1)
     agent.config.system += variant.prompt_for(task.domain)
     if variant.mode != "phased" and setup.limits.compact:
         Compactor(agent, setup.limits.compact)

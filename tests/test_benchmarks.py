@@ -249,6 +249,15 @@ def test_a_variant_extends_another_and_adds_a_prompt_per_domain(tmp_path):
     assert "TypeScript idioms" in idioms.prompt_for("typescript") and "Python" not in idioms.prompt_for("typescript")
 
 
+def test_style_is_in_the_agent_prompt_unless_a_variant_turns_it_off(task, tmp_path):
+    from tai.agent.prompt import STYLE
+    assert not Variant.load("lean-shape").style and Variant.load("plain").style  # inherited from lean
+    for name, expected in (("plain", True), ("bare", False)):
+        s = setup(text_reply("done"))
+        harness.run_task(harness.Run(task, name, tmp_path / name, variant=Variant.load(name)), s)
+        assert (STYLE in s.client.requests[0][0]["content"]) is expected
+
+
 def test_process_metrics(task, tmp_path):
     task.deliverables = ["out.txt"]
     s = setup(tool_reply("write", {"path": "scratch.py", "content": "print(1)"}),

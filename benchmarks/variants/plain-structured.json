@@ -1,4 +1,5 @@
 {
  "extends": "plain",
+ "style": false,
  "prompt": "\nWrite well-structured code.\n"
 }

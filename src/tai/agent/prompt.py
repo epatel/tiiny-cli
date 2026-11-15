@@ -34,6 +34,26 @@ How to work:
   on long input a few minutes (use 300).
 """
 
+# Working style + code shape: the benchmarks' lean-shape variant, the best of plain, lean, lean-shape,
+# lean-idioms, lean-check and plain-structured on Qwen3.6-35B-A3B-Turbo (2026-11-16). Writing is the
+# slow part on the device, so these rules mostly cut wasted output.
+STYLE = """
+# Working style
+- Write the deliverables the task asks for first; refine them after.
+- Change existing files with edit; don't rewrite a whole file to change part of it.
+- Don't build helper tools, checkers or scratch scripts unless the task asks for them. Test with the
+  project's own test command.
+- Keep the project working: change it in small steps and run the tests after each.
+
+# Code shape
+- Keep functions small, with one job each. When a change would make a function long or add many
+  branches, extract a helper with a clear name instead.
+- Don't copy logic: reuse it or extract a shared function.
+- Keep code flat: guard clauses and early returns instead of nested if/else.
+- When branches only differ in data, use a lookup table instead of a long if/else or switch chain.
+- Pass few arguments; group related values in one object.
+"""
+
 
 def project_instructions(root: Path) -> str:
     """The first AGENTS.md / CLAUDE.md found in the project root, truncated."""
@@ -49,4 +69,4 @@ def system_prompt(root: Path, model_name: str, extra: str = "") -> str:
     """``extra``: further sections, e.g. the skill list and MCP server instructions."""
     env = (f"\n# Environment\n- Project root: {root}\n- Date: {datetime.date.today().isoformat()}\n"
            f"- OS: {platform.system()} {platform.release()}\n- Model: {model_name}\n")
-    return BASE + env + project_instructions(root) + extra
+    return BASE + STYLE + env + project_instructions(root) + extra
