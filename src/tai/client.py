@@ -27,6 +27,7 @@ from tai.config import Settings
 
 
 LAUNCH_IDLE_TIMEOUT = 180.0  # seconds without a progress event before a load counts as failed
+DOWNLOAD_IDLE_TIMEOUT = 300.0  # the same for a download (it reports about once a second)
 
 
 class TiinyError(RuntimeError):
@@ -140,6 +141,26 @@ class TiinyClient:
                 f"No progress from the device for {LAUNCH_IDLE_TIMEOUT:.0f}s while loading {model_id}; "
                 "it may have dropped the request. Check `tai status` and retry."
             ) from e
+
+    def store_models(self) -> list[dict]:
+        """Every model in the Tiiny store (name, fullname = id, type, desc), downloaded or not."""
+        return self._json("GET", "/api/v1/models/online_models")
+
+    def download(self, model_id: str) -> Iterator[dict]:
+        """Download a store model to the device; yields events like ``launch``: ``init``, then
+        ``progress`` (status, progress %, stage, downloaded/total_bytes, speed_human, error) and
+        ``done``. Not in the device's OpenAPI; found in the official tiiny CLI (2026-11-16)."""
+        path = f"/api/v1/models/{model_id}/download/stream"
+        timeout = httpx.Timeout(30.0, read=DOWNLOAD_IDLE_TIMEOUT)
+        try:
+            for event, data in self._sse("POST", path, timeout=timeout):
+                ev = _launch_event(event, data)
+                if ev.get("error") or event == "error":
+                    raise TiinyError(f"download of {model_id} failed: {_message(ev.get('error') or ev)}")
+                yield ev
+        except httpx.ReadTimeout as e:
+            raise TiinyError(f"No progress from the device for {DOWNLOAD_IDLE_TIMEOUT:.0f}s while downloading "
+                             f"{model_id}. Check `tai models`; the device may still be downloading.") from e
 
     def stop(self, model_id: str) -> dict:
         return self._json("POST", f"/api/v1/models/{model_id}/stop")

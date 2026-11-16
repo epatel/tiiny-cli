@@ -4,7 +4,7 @@
 A Python CLI (`tai`) that makes every model installed on the user's Tiiny device usable over Wi-Fi with one command per task. Model loading and NPU swapping happen transparently, asking before anything is unloaded.
 
 ## Non-goals
-- Replacing the official `tiiny` CLI for device admin (activation, login, Wi-Fi, firmware, downloads, knowledge-base vault, connectors).
+- Replacing the official `tiiny` CLI for device admin (activation, login, Wi-Fi, firmware, knowledge-base vault, connectors). Downloads were here until 2026-11-16.
 - USB-C transport.
 - Running models locally or proxying to cloud providers.
 
@@ -74,6 +74,7 @@ One line each; the how and why live in the cards and the code.
 - 2026-11-14 — Agent step limit 50 → 200, `agent.max_steps` (or off), none in phased work: the context budget ends a phase. User report (stopped too early).
 - 2026-11-14 — Benchmarks: a standalone `benchmarks/run.py`, not a tai command; bash under macOS sandbox-exec; Python, TypeScript, research and writing tasks. User choices; task fixtures excluded from aihealth (`.aihealth.toml`).
 - 2026-11-14 — Compaction: summary + latest messages, manual and automatic at 85%, off in phases. `compact.py` keeps aihealth's Primitive Obsession (messages are plain dicts throughout tai).
+- 2026-11-16 — `tai download [MODEL]`: downloads store models through `/api/v1/models/{id}/download/stream` (found in the official CLI's binary, checked live with Kokoro-82M); no MODEL lists the store. Downloads are no longer a non-goal. User request.
 - 2026-11-16 — `default.agent` = Qwen3.6-35B-A3B-Turbo in the user's settings (2–3× faster writing than Qwen3.8-27B, equal or better benchmark scores). User choice.
 - 2026-11-16 — tai agent's system prompt includes lean-shape's rules (`STYLE`): best over six runs; idioms, a finishing check and a generic quality line showed no gain. Benchmarks: `plain` is now the agent as shipped, `bare` the old baseline (`style: false`). User go-ahead.
 - 2026-11-16 — Chat streams read with an idle timeout (180 s with progress keep-alives, else 600 s); benchmarks `--resume` skips finished runs. Found in the shape run (a silent drop hung it 25 min).
@@ -85,7 +86,7 @@ One line each; the how and why live in the cards and the code.
 - 2026-11-15 — Benchmarks: runs cut off by `--timeout` are marked `timed_out` (log + summary column); `--timeout 0` = no limit. The default stays 60 min. User report (3 of 7 first-run results were cut off, phased hit hardest).
 
 ## Current state / handoff
-- **Built:** every command in M2 plus `info`, `video`, `-x`, `serve`/client mode, and `tai agent` with tools, viewer, media, web, MCP, skills, `/tiiny`, phased work (M9) and compaction. 300 unit tests pass (no device needed), also in CI on Python 3.10–3.13 + macOS.
+- **Built:** every command in M2 plus `info`, `video`, `-x`, `serve`/client mode, and `tai agent` with tools, viewer, media, web, MCP, skills, `/tiiny`, phased work (M9) and compaction. 305 unit tests pass (no device needed), also in CI on Python 3.10–3.13 + macOS.
 - **Checked live:** all seven original models, plus `tai info`, `tai video` and `-x` (2026-11-08/09). Results and timings are in the cards (device-api, agent). The user has used `tai agent` (the 2026-11-09 thinking-label report), but the M6 live-run item is still open.
 - **Not run live yet:** phased work, compaction, and the `video` tool inside the TUI.
 - **Device, 2026-11-15:** Qwen3.6-35B-A3B-Turbo and Qwen3.8-27B loaded (98%); `default.agent` is Qwen3.6-35B-A3B-Turbo (set 2026-11-16). Tool-capable chat models: those two, Qwen3.6-35B-A3B, Qwen3.8-27B-heretic-ara-Turbo (59%), Qwen3-Coder-Next (94%, 131K). Writing speed, thinking off, short prompt: Qwen3.6-35B-A3B-Turbo 47 tok/s, Qwen3.8-27B 19 tok/s. Don't reload the coder model unasked; a live run may unload the user's models.

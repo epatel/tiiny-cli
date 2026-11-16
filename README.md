@@ -90,6 +90,7 @@ tai skills                  # skills it can use (.claude/skills, ~/.claude/skill
 tai status                  # NPU usage
 tai-top                     # live full-screen view: NPU/CPU graphs, memory, models (q quits; --ascii for plain ASCII)
 tai load qwen3.6            # pre-load; tai unload --all
+tai download                # store models not on the device; tai download kokoro
 tai info omni               # what a model is (incl. context window) + the options it reports (--json, --no-load)
 tai config set default.chat coder              # preferred model per task
 tai config set think off                       # default reasoning mode

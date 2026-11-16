@@ -29,7 +29,7 @@ from tai.db import Store
 from tai.info import catalog_row, render, reported, reports_options
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
-from tai.models import Model, ResolveError, build_catalog, resolve, short_tokens
+from tai.models import Model, ResolveError, build_catalog, match_store, resolve, short_tokens
 from tai.options import (AgentRequest, AskOutput, AsrOptions, ChatOptions, ImageOptions, Prompt,
                          Question, SavedFile, SessionRef, TtsConfig, bundle, chat_options, extra_option,
                          generator, merge)
@@ -293,6 +293,55 @@ def unload(app: App, model, all_):
     for m in targets:
         app.client.stop(m.id)
         out.print(f"Unloaded {m.name}")
+
+
+@cli.command()
+@click.argument("model", required=False)
+@pass_app
+def download(app: App, model):
+    """Download MODEL from the Tiiny store to the device (no MODEL: list what you can download).
+
+    The device needs Wi-Fi with internet. Ctrl+C stops watching; check `tai models` afterwards."""
+    store = app.client.store_models()
+    have = {m.id for m in app.catalog()}
+    if not model:
+        _store_table([d for d in store if d["fullname"] not in have])
+        return
+    entry = match_store(store, model)
+    name = entry.get("name") or entry["fullname"]
+    if entry["fullname"] in have:
+        out.print(f"{name} is already on the device.")
+        return
+    with Progress(TextColumn(f"[bold]Downloading {name}"), BarColumn(), TextColumn("{task.percentage:>3.0f}%"),
+                  TextColumn("[dim]{task.fields[msg]}"), TimeElapsedColumn(), console=err, transient=True) as prog:
+        tid = prog.add_task("download", total=100, msg="")
+        for ev in app.client.download(entry["fullname"]):
+            prog.update(tid, completed=float(ev.get("progress") or 0), msg=_download_note(ev))
+    out.print(f"[green]Downloaded {name}[/] ({entry['fullname']})")
+
+
+def _download_note(ev: dict) -> str:
+    """e.g. 'downloading 37/235 MB 12 MB/s'."""
+    parts = [ev.get("stage") or ev.get("status") or "", _megabytes(ev)]
+    if ev.get("speed_bytes_per_sec"):
+        parts.append(ev.get("speed_human") or "")
+    return " ".join(x for x in parts if x)
+
+
+def _megabytes(ev: dict) -> str:
+    total = ev.get("total_bytes") or 0
+    return f"{(ev.get('downloaded_bytes') or 0) / 1e6:.0f}/{total / 1e6:.0f} MB" if total else ""
+
+
+def _store_table(entries: list[dict]) -> None:
+    t = Table(box=None, header_style="bold")
+    t.add_column("Name", overflow="fold")
+    t.add_column("Type", no_wrap=True)
+    t.add_column("Model ID", no_wrap=True)
+    for d in sorted(entries, key=lambda d: (d.get("type", ""), d.get("name", ""))):
+        t.add_row(d.get("name", ""), d.get("type", ""), f"[dim]{d['fullname']}[/]")
+    out.print(t)
+    out.print(f"[dim]{len(entries)} models in the store aren't on the device. tai download NAME[/]")
 
 
 @cli.group("config", invoke_without_command=True)

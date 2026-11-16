@@ -130,7 +130,21 @@ def _pick_default(pool: list[Model], task: str | None) -> Model:
     return min(loaded or pool, key=lambda m: m.npu)
 
 
-def _match(models: list[Model], query: str, pool: list[Model]) -> Model:
+def match_store(store: list[dict], query: str) -> dict:
+    """The store entry (``online_models``) for ``query``: full id, name, or a unique substring of
+    either (store names can differ from ids: Qwen3-VoiceClone-1.7B is Qwen/Qwen3-TTS-12Hz-1.7B-Base)."""
+    models = [Model(d["fullname"], d.get("name") or d["fullname"], d.get("type", ""), 0, "") for d in store]
+    by_name = [m for m in models if query.lower() in m.name.lower()]
+    try:
+        hit = _match(models, query, models, "In the store")
+    except ResolveError:
+        if len(by_name) != 1:
+            raise
+        hit = by_name[0]
+    return next(d for d in store if d["fullname"] == hit.id)
+
+
+def _match(models: list[Model], query: str, pool: list[Model], listed: str = "Installed") -> Model:
     """Try exact id, then exact name, then id substring; the first unique hit wins."""
     q = query.lower()
     rules = (
@@ -145,7 +159,7 @@ def _match(models: list[Model], query: str, pool: list[Model]) -> Model:
         if hits:
             return hits[0]
     names = ", ".join(m.name for m in pool or models)
-    raise ResolveError(f"No model matches '{query}'. Installed: {names}")
+    raise ResolveError(f"No model matches '{query}'. {listed}: {names}")
 
 
 @dataclass

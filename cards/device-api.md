@@ -18,6 +18,8 @@ The Tiiny device's HTTP API as `tai` uses it: endpoints, payloads and their quir
 | `GET /api/v1/models/npu/status` | `npu_total` (100), `npu_used`, `npu_available` |
 | `POST /api/v1/models/{id}/launch/stream` | Load. SSE stream of `event: progress` then `event: done`; on failure `done` has `success: false`, plus `startup_error` and a `toast.message` |
 | `POST /api/v1/models/{id}/stop` | Unload |
+| `GET /api/v1/models/online_models` | The Tiiny store: a list of `{name, fullname (= id), type, desc, …}`. Store names can differ from ids (`Qwen3-VoiceClone-1.7B` = `Qwen/Qwen3-TTS-12Hz-1.7B-Base`) |
+| `POST /api/v1/models/{id}/download/stream` | Download from the store (`tai download`). Not in `/openapi.json`; found in the official CLI's binary. SSE: `init` (`result.message`), `progress` every ~1 s (`status` downloading → downloaded, `progress` %, `stage` downloading / loading_image, `downloaded_bytes`/`total_bytes`, `speed_human`, `error`), then `done`. Kokoro-82M (235 MB): 17 s. Also in the binary, not tried: `/pause_download`, `/api/v1/models/storage` (per-model disk use) |
 | `GET /api/v1/sys/status` | `cpu {total_percent, per_core_percent[12]}`, `memory {used_bytes, total_bytes, usage_percent}`, `gpu {utilization_percent}` ("synthetic"), `npus[0] {utilization_percent, memory_used_mb, memory_total_mb}`, `disk`. `total_percent` disagrees with the per-core figures (0.0 next to cores at ~40%), so `tai-top` graphs the per-core mean. `memory_total_mb` varies between calls (12372, then ~9400) |
 
 Model ids contain a slash (`Qwen/Qwen3-Coder-Next`), and the slash goes straight into the path.

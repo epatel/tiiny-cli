@@ -129,3 +129,17 @@ def test_launch_idle_stream_times_out_with_clear_error(client):
     with pytest.raises(TiinyError, match="No progress from the device for 180s while loading Qwen/X"):
         list(client.launch("Qwen/X"))
     assert respx.calls[0].request.extensions["timeout"]["read"] == 180.0
+
+
+@respx.mock
+def test_download_streams_progress_and_raises_on_an_error(client):
+    body = ('event: init\ndata: {"result": {"message": "start"}}\n\n'
+            'event: progress\ndata: {"status": "downloading", "progress": 40, "error": ""}\n\n'
+            'event: done\ndata: {"status": "downloaded", "progress": 100, "error": ""}\n\n')
+    sse = {"content-type": "text/event-stream"}
+    respx.post(f"{BASE}/api/v1/models/h/Small/download/stream").mock(return_value=httpx.Response(200, text=body, headers=sse))
+    assert [e["_event"] for e in client.download("h/Small")] == ["init", "progress", "done"]
+    bad = 'event: progress\ndata: {"status": "failed", "progress": 3, "error": "no internet"}\n\n'
+    respx.post(f"{BASE}/api/v1/models/h/Bad/download/stream").mock(return_value=httpx.Response(200, text=bad, headers=sse))
+    with pytest.raises(TiinyError, match="no internet"):
+        list(client.download("h/Bad"))
