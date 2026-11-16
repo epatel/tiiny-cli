@@ -1,8 +1,8 @@
-"""`tai-top`: a full-screen view of the device's utilisation, refreshed every second.
+"""`tai top`: a full-screen view of the device's utilisation, refreshed every second.
 
-    tai-top                # uses tai's device config (or --url / TAI_URL for client mode)
-    tai-top -i 2           # poll every 2 seconds
-    tai-top --ascii        # plain ASCII instead of Unicode block characters
+    tai top                # uses tai's device config (or tai --url / TAI_URL for client mode)
+    tai top -i 2           # poll every 2 seconds
+    tai top --ascii        # plain ASCII instead of Unicode block characters
 
 Keys: q quit · p pause · + / - poll faster / slower.
 
@@ -12,7 +12,6 @@ screen. ``render`` is a pure function from samples to text lines (tested without
 
 from __future__ import annotations
 
-import argparse
 import curses
 import locale
 import threading
@@ -180,7 +179,7 @@ class View:
 def render(view: View, box: Box) -> list[str]:
     """The whole screen: ``box.height`` lines of at most ``box.width`` characters."""
     if box.width < MIN_WIDTH or box.height < MIN_HEIGHT:
-        return [f"tai-top needs at least {MIN_WIDTH}x{MIN_HEIGHT} (have {box.width}x{box.height})"]
+        return [f"tai top needs at least {MIN_WIDTH}x{MIN_HEIGHT} (have {box.width}x{box.height})"]
     lines = [_header(view, box)]
     if not view.samples:
         lines.append(view.error or "Waiting for the first sample…")
@@ -202,7 +201,7 @@ def _fit(lines: list[str], box: Box) -> list[str]:
 def _header(view: View, box: Box) -> str:
     state = "PAUSED" if view.paused else f"every {view.interval:g}s"
     d = view.glyphs.dot
-    left = f" tai-top {d} {view.where} {d} {time.strftime('%H:%M:%S')} {d} {state}"
+    left = f" tai top {d} {view.where} {d} {time.strftime('%H:%M:%S')} {d} {state}"
     right = "q quit  p pause  +/- speed "
     return left + " " * max(1, box.width - len(left) - len(right)) + right
 
@@ -312,30 +311,16 @@ def screen(stdscr, poller: Poller, where: str, glyphs: Glyphs) -> None:
             return
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="tai-top", description="Live, full-screen view of the Tiiny device's utilisation.")
-    p.add_argument("-i", "--interval", type=float, default=1.0, help="seconds between polls (default 1)")
-    p.add_argument("--device", help="device IP (default: from the tiiny config)")
-    p.add_argument("--url", help="a `tai serve` URL (client mode; or TAI_URL)")
-    p.add_argument("--ascii", action="store_true", help="draw with plain ASCII (automatic without a UTF-8 locale)")
-    args = p.parse_args(argv)
+def run(client, interval: float = 1.0, ascii_only: bool = False) -> None:
+    """`tai top`: poll the device in the background and draw until q (or Ctrl-C)."""
     locale.setlocale(locale.LC_ALL, "")  # curses needs it to draw Unicode
     utf8 = locale.getpreferredencoding(False).lower().replace("-", "") == "utf8"
-    glyphs = ASCII if args.ascii or not utf8 else UNICODE
-
-    from tai.client import TiinyClient
-    from tai.config import load_settings
-    settings = load_settings(device=args.device, url=args.url)
-    poller = Poller(TiinyClient(settings), args.interval)
+    glyphs = ASCII if ascii_only or not utf8 else UNICODE
+    poller = Poller(client, interval)
     poller.start()
     try:
-        curses.wrapper(screen, poller, settings.where, glyphs)
+        curses.wrapper(screen, poller, client.settings.where, glyphs)
     except KeyboardInterrupt:
         pass
     finally:
         poller.stop()
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

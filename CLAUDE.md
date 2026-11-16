@@ -19,7 +19,7 @@ These are standard and used the standard way. There are no cards for them: read 
 
 `make help` lists the targets:
 - Setup: `make setup` (creates `.venv`, installs with dev extras)
-- Live device monitor: `.venv/bin/tai-top` (`src/tai/top.py`, curses, its own entry point; `render` is pure and tested in `tests/test_top.py`)
+- Live device monitor: `.venv/bin/tai top` (`src/tai/top.py`, curses; `render` is pure and tested in `tests/test_top.py`)
 - Run: `.venv/bin/tai --help` (e.g. `.venv/bin/tai models`, `.venv/bin/tai ask "hi"`, `.venv/bin/tai agent` in a project folder)
 - Test: `make test` (one test: `.venv/bin/pytest tests/test_models.py::test_swap_unloads_the_least_npu_that_makes_room`)
 - Before committing: `make check` (tests + `aihealth delta`). `make scan` gives a project health overview

@@ -37,10 +37,9 @@ bench: setup  ## Benchmark tai agent plain vs phased on the device (ARGS="-t ts-
 bench-check: setup  ## Check the benchmark graders (no device)
 	$(BIN)/python benchmarks/run.py --check
 
-link: setup  ## Put `tai` and `tai-top` on PATH via $(PREFIX)/bin
+link: setup  ## Put `tai` on PATH via $(PREFIX)/bin
 	mkdir -p $(PREFIX)/bin
 	ln -sf $(CURDIR)/$(BIN)/tai $(PREFIX)/bin/tai
-	ln -sf $(CURDIR)/$(BIN)/tai-top $(PREFIX)/bin/tai-top
 
 unlink:  ## Remove the `tai` link from $(PREFIX)/bin
 	rm -f $(PREFIX)/bin/tai $(PREFIX)/bin/tai-top

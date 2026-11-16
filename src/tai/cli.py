@@ -239,6 +239,19 @@ def status(app: App):
 
 
 @cli.command()
+@click.option("-i", "--interval", type=click.FloatRange(min=0.2), default=1.0, show_default=True,
+              help="Seconds between polls.")
+@click.option("--ascii", "ascii_only", is_flag=True, help="Draw with plain ASCII (automatic without a UTF-8 locale).")
+@pass_app
+def top(app: App, interval, ascii_only):
+    """Live full-screen view: NPU/CPU graphs, memory, per-core load, loaded models.
+
+    Keys: q quit, p pause, + / - poll faster / slower."""
+    from tai.top import run
+    run(app.client, interval, ascii_only)
+
+
+@cli.command()
 @click.argument("model")
 @pass_app
 def load(app: App, model):

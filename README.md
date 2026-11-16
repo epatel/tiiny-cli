@@ -89,7 +89,7 @@ tai mcp                     # MCP servers the agent uses (.mcp.json, ~/.config/t
 tai skills                  # skills it can use (.claude/skills, ~/.claude/skills, ~/.config/tai/skills)
 
 tai status                  # NPU usage
-tai-top                     # live full-screen view: NPU/CPU graphs, memory, models (q quits; --ascii for plain ASCII)
+tai top                     # live full-screen view: NPU/CPU graphs, memory, models (q quits; --ascii for plain ASCII)
 tai load qwen3.6            # pre-load; tai unload --all
 tai download                # store models not on the device; tai download kokoro
 tai info omni               # what a model is (incl. context window) + the options it reports (--json, --no-load)
@@ -198,9 +198,9 @@ Each phase sees only the work folder and the handoffs, never the earlier convers
 
 **MCP servers and skills.** MCP servers come from the project's `.mcp.json` (Claude Code's format) and `~/.config/tai/mcp.json`. Their tools ask first unless the server marks them read-only. Skills come from `.claude/skills/`, `~/.claude/skills/` and `~/.config/tai/skills/`, so they are shared with Claude Code. `tai mcp` and `tai skills` list them; `tai agent --no-mcp` skips MCP.
 
-**`tai-top`** shows the device live: NPU and CPU history, NPU memory, memory, the NPU budget held by models, GPU, disk, per-core load and the loaded models. `p` pauses, `+`/`-` change the refresh interval, `q` quits.
+**`tai top`** shows the device live: NPU and CPU history, NPU memory, memory, the NPU budget held by models, GPU, disk, per-core load and the loaded models. `p` pauses, `+`/`-` change the refresh interval, `q` quits.
 
-<img src="tai-top.jpg" width="600" alt="tai-top: NPU and CPU graphs, memory bars, per-core load and the loaded model">
+<img src="tai-top.jpg" width="600" alt="tai top: NPU and CPU graphs, memory bars, per-core load and the loaded model">
 
 ## Remote use: `tai serve`
 

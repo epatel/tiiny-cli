@@ -28,7 +28,6 @@ dev = [
 
 [project.scripts]
 tai = "tai.cli:main"
-tai-top = "tai.top:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

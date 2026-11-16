@@ -1,4 +1,4 @@
-"""tai-top: parsing the device's answers, the drawing (Unicode and ASCII), polling and keys (no curses, no device)."""
+"""tai top: parsing the device's answers, the drawing (Unicode and ASCII), polling and keys (no curses, no device)."""
 
 from tai.top import ASCII, Box, Poller, Readings, View, bar, graph, handle_key, parse, render
 
@@ -97,3 +97,16 @@ def test_keys():
     handle_key(p, ord("-"))
     assert p.interval == 2.0
     assert handle_key(p, -1) and not handle_key(p, ord("q"))
+
+
+def test_tai_top_command_runs_the_monitor_with_the_app_client(monkeypatch):
+    from click.testing import CliRunner
+
+    from tai import cli as cli_mod, top as top_mod
+
+    seen = {}
+    monkeypatch.setattr(top_mod, "run", lambda client, interval, ascii_only: seen.update(i=interval, a=ascii_only))
+    monkeypatch.setattr(cli_mod.App, "client", "the-client")
+    result = CliRunner().invoke(cli_mod.cli, ["top", "-i", "2", "--ascii"])
+    assert result.exit_code == 0, result.output
+    assert seen == {"i": 2.0, "a": True}
