@@ -13,6 +13,10 @@ MODELS = [
      "status": "running", "input": "Text", "thinking": {"toggleable": True}},
     {"id": "k2/Voice", "display_name": "Voice", "type": "Text-to-Speech", "npu_usage": 10,
      "status": "running"},
+    {"id": "k2-fsa/OmniVoice", "display_name": "OmniVoice", "type": "Text-to-Speech", "npu_usage": 2,
+     "status": "running", "supported": ["Voice Clone", "Voice Design"]},
+    {"id": "Qwen/Clone", "display_name": "Clone", "type": "Text-to-Speech", "npu_usage": 5,
+     "status": "downloaded", "supported": ["Voice Clone"]},
     {"id": "z/Image", "display_name": "Image", "type": "Text-to-Image", "npu_usage": 20,
      "status": "running"},
     {"id": "q/Ears", "display_name": "Ears", "type": "ASR", "npu_usage": 5, "status": "running"},
@@ -37,6 +41,7 @@ class FakeClient:
 
     def tts(self, model, text, config=None):
         self.calls.append(("tts", config))
+        self.model = model
         return b"RIFF", {"duration": 1.0}
 
     def image(self, model, prompt, **extra):
@@ -115,3 +120,12 @@ def test_image_asr_embed_take_extras(fake, tmp_path):
 def test_bad_extra_is_a_usage_error(fake):
     r = CliRunner().invoke(cli_mod.cli, ["tts", "-x", "language", "hej"])
     assert r.exit_code == 2 and "KEY=VALUE" in r.output
+
+
+def test_tts_clone_sends_the_recording_and_picks_a_model_that_clones(fake, monkeypatch, tmp_path):
+    monkeypatch.setattr(cli_mod.App, "ensure_loaded", lambda app, m: None)
+    (tmp_path / "me.wav").write_bytes(b"RIFF")
+    r = run("tts", "-i", "female", "--clone", "me.wav", "--clone-text", "hello there", "hej")
+    assert r.exit_code == 0, r.output
+    assert fake.calls == [("tts", {"ref_audio": "UklGRg==", "ref_text": "hello there"})]  # no instruct
+    assert fake.model == "Qwen/Clone"  # not the loaded OmniVoice: the device refuses its clone

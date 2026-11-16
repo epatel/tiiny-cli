@@ -27,6 +27,9 @@ LOADED = ("running",)
 LOADING = ("pending", "starting", "loading", "launching")
 
 
+CLONE_REFUSED = {"k2-fsa/OmniVoice"}  # catalog says Voice Clone, the device refuses it
+
+
 @dataclass
 class Model:
     id: str
@@ -57,6 +60,12 @@ class Model:
     @property
     def tools(self) -> bool:
         return "Tool Use" in self.supported
+
+    @property
+    def clones(self) -> bool:
+        """Can clone a voice from a recording. OmniVoice's catalog row says so, but the device
+        refuses it ("voice_clone is not supported by the loaded TTS model", 2026-11-16)."""
+        return "Voice Clone" in self.supported and self.id not in CLONE_REFUSED
 
     @property
     def vision(self) -> bool:
@@ -134,23 +143,18 @@ def match_store(store: list[dict], query: str) -> dict:
     """The store entry (``online_models``) for ``query``: full id, name, or a unique substring of
     either (store names can differ from ids: Qwen3-VoiceClone-1.7B is Qwen/Qwen3-TTS-12Hz-1.7B-Base)."""
     models = [Model(d["fullname"], d.get("name") or d["fullname"], d.get("type", ""), 0, "") for d in store]
-    by_name = [m for m in models if query.lower() in m.name.lower()]
-    try:
-        hit = _match(models, query, models, "In the store")
-    except ResolveError:
-        if len(by_name) != 1:
-            raise
-        hit = by_name[0]
+    hit = _match(models, query, models, "In the store")
     return next(d for d in store if d["fullname"] == hit.id)
 
 
 def _match(models: list[Model], query: str, pool: list[Model], listed: str = "Installed") -> Model:
-    """Try exact id, then exact name, then id substring; the first unique hit wins."""
+    """Try exact id, then exact name, then id substring, then name substring; the first unique hit wins."""
     q = query.lower()
     rules = (
         lambda m: m.id.lower() == q,
         lambda m: m.name.lower() == q,
         lambda m: q in m.id.lower(),
+        lambda m: q in m.name.lower(),  # names can differ from ids (Qwen3-VoiceClone-1.7B)
     )
     for rule in rules:
         hits = [m for m in models if rule(m)]

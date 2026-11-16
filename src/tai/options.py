@@ -10,6 +10,7 @@ from __future__ import annotations
 # CLI boundary: click hands over plain strings, which this module turns into typed options.
 # aihealth: disable=primitive_obsession
 
+import base64
 import functools
 import json
 from dataclasses import dataclass, field
@@ -205,10 +206,17 @@ class TtsConfig:
     """`tai tts` voice settings, sent as the request's ``config``."""
     instruct: str | None = None
     extra: dict = field(default_factory=dict)  # -x fields, e.g. language
+    clone: Path | None = None  # reference recording (WAV) of the voice to clone
+    clone_text: str | None = None  # its words (Qwen3-VoiceClone needs them; VibeVoice refuses them)
 
     def config(self, default_instruct: str | None = None) -> dict | None:
-        instruct = self.instruct or default_instruct
-        return merge({"instruct": instruct} if instruct else {}, self.extra) or None
+        instruct = None if self.clone else (self.instruct or default_instruct)
+        given = {"instruct": instruct} if instruct else {}
+        if self.clone:
+            given["ref_audio"] = base64.b64encode(self.clone.read_bytes()).decode()
+        if self.clone_text:
+            given["ref_text"] = self.clone_text
+        return merge(given, self.extra) or None
 
 
 @dataclass(frozen=True)

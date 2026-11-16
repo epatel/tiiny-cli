@@ -90,6 +90,15 @@ class App:
         tool_models = [m for m in self.catalog() if m.task == "chat" and m.tools]
         return resolve(tool_models, query, "chat", default=self.store.get_setting("default.agent"))
 
+    def clone_model(self, query: str | None) -> Model:
+        """A TTS model for --clone: ``query`` if given, else one that can clone, a loaded one first."""
+        cloners = [m for m in self.catalog() if m.task == "tts" and m.clones]
+        if query:
+            return self.model_for("tts", query)
+        if not cloners:
+            raise ResolveError("No installed TTS model can clone a voice: tai download voiceclone")
+        return min(cloners, key=lambda m: (not m.loaded, m.npu))
+
     def model_for(self, task: str, query: str | None) -> Model:
         models = self.catalog()
         return resolve(models, query, task, default=self.store.get_setting(f"default.{task}"))
@@ -776,24 +785,30 @@ def _save(saved: SavedFile, data: bytes, note: str) -> None:
 @click.option("-m", "--model")
 @click.option("-o", "--output", type=click.Path(path_type=Path), default=Path("speech.wav"), show_default=True)
 @click.option("-i", "--instruct", help='Voice design, e.g. "female, british accent, low pitch".')
+@click.option("--clone", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Speak in the voice of this recording (a few seconds of clean speech, WAV).")
+@click.option("--clone-text", help="The words spoken in the --clone recording (Qwen3-VoiceClone needs them).")
 @click.option("--play", is_flag=True, help="Play the audio when done.")
 @extra_option("in the TTS config (e.g. language=sv)")
-@bundle("voice", TtsConfig, "instruct", "extra")
+@bundle("voice", TtsConfig, "instruct", "extra", "clone", "clone_text")
 @pass_app
 def tts(app: App, text, model, output, voice: TtsConfig, play):
-    """Speak TEXT (or stdin) into a WAV file."""
+    """Speak TEXT (or stdin) into a WAV file.
+
+    With --clone, the default model is one that can clone (a loaded one first)."""
     s = " ".join(text)
     if not s and not sys.stdin.isatty():
         s = sys.stdin.read().strip()
     if not s:
         raise click.UsageError("Nothing to say.")
-    m = app.model_for("tts", model)
+    m = app.clone_model(model) if voice.clone else app.model_for("tts", model)
     app.ensure_loaded(m)
     config = voice.config(default_instruct=app.store.get_setting("tts.instruct"))
     with err.status(f"Synthesizing with {m.name}…"):
         audio, meta = app.client.tts(m.id, s, config)
     output.write_bytes(audio)
-    click.echo(f"Saved {output} ({meta.get('duration', '?')}s)")
+    duration = meta.get("duration")
+    click.echo(f"Saved {output} ({round(duration, 2) if isinstance(duration, (int, float)) else '?'}s)")
     if play:
         _play(output)
 

@@ -76,6 +76,7 @@ tai history clear           # delete all sessions and the agent's prompt history
 tai image "a fox in the snow, watercolor" -o fox.png --size 1024x1024 --open
 tai tts "Hello there" -i "female, british accent" --play
 tai tts "Hej, hur mår du?" -x language=sv          # -x KEY=VALUE: any option tai has no flag for
+tai tts "Good morning" --clone me.wav --clone-text "the words in me.wav"   # in your voice (Qwen3-VoiceClone; VibeVoice: -m vibevoice, no --clone-text)
 tai asr recording.wav
 tai embed "first text" "second text"           # JSON lines
 tai 3d toy.png --faces 200000 -o toy.glb       # ~15 min, image → textured mesh
