@@ -49,6 +49,10 @@ Only some models describe themselves, and only while loaded (checked 2026-11-09)
 
 `tai info` asks before loading a model to query it (`-y` loads, `--no-load` never does).
 
+**VoxCPM2** (`openbmb/VoxCPM2`, 7%, 2026-11-16): Swedish and 29 more languages with no language tag, 48 kHz output, cloning with `ref_audio` and optional `ref_text` (clip only drifted on one phrase, with the transcript it was right), ~2.5 s per sentence. `support_instruct: false`. Of the installed models, only OmniVoice (`-x language=sv`, no cloning) and VoxCPM2 speak Swedish.
+
+**Qwen3-ASR on 48 kHz WAV returns nothing or invented text** (e.g. English for a Swedish clip); the same audio at 16 kHz (`afconvert -f WAVE -d LEI16@16000 in.wav out.wav`) transcribes correctly. 24 kHz (OmniVoice) was fine. `tai asr` sends the file as is.
+
 Voice cloning (2026-11-16, `tai tts --clone FILE [--clone-text WORDS]`): `config.ref_audio` = base64 of a WAV (a data URI works too) on `/v1/synthesize`. **Qwen3-VoiceClone-1.7B** (`Qwen/Qwen3-TTS-12Hz-1.7B-Base`, 5%) needs `ref_text` too (500 "voice_clone requires ref_audio and ref_text"; 400 "custom_voice is not supported" without any reference); ~2 s for a short line. **VibeVoice-1.5B** (8%) refuses `ref_text` (400 "VibeVoice uses ref_audio without a reference transcript"). `Model.clones` = catalog "Voice Clone" minus `CLONE_REFUSED` (OmniVoice, below); `--clone` without `-m` picks such a model, a loaded one first, and drops `instruct`.
 
 OmniVoice voice cloning (2026-11-16): the catalog lists "Voice Clone", but the device refuses it. `/v1/capabilities` says `support_voice_clone: false` (`support_custom_voice: true`). `config.ref_audio` + `ref_text` → 400 "voice_clone is not supported by the loaded TTS model"; `prompt_audio` → 400 "OmniVoice server supports text and instruct without reference audio or history"; other key names are silently ignored (same audio). Only voice design (`instruct`) works. Check again after a device update.
