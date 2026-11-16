@@ -47,6 +47,8 @@ Only some models describe themselves, and only while loaded (checked 2026-11-09)
 
 `tai info` asks before loading a model to query it (`-y` loads, `--no-load` never does).
 
+OmniVoice voice cloning (2026-11-16): the catalog lists "Voice Clone", but the device refuses it. `/v1/capabilities` says `support_voice_clone: false` (`support_custom_voice: true`). `config.ref_audio` + `ref_text` → 400 "voice_clone is not supported by the loaded TTS model"; `prompt_audio` → 400 "OmniVoice server supports text and instruct without reference audio or history"; other key names are silently ignored (same audio). Only voice design (`instruct`) works. Check again after a device update.
+
 OmniVoice language: `config.language` on `/v1/synthesize` (`tai tts -x language=sv`); `auto` is the same as leaving it out. Output is deterministic for the same text and config, so audio hashes compare settings: `sv` and `en` change the audio. Unknown codes (`nonsense-xx`) are accepted silently and change it too, so check against `supported_languages` (647 codes) yourself.
 
 `-x KEY=VALUE` (`src/tai/options.py`: `extra_option`, `parse_extras`, `merge`) is the generic way to reach fields like these; each command decides where they go (body, TTS `config`, ASR form fields) and they're deep-merged over tai's own, so `-x` wins.
