@@ -8,7 +8,8 @@ A variant is a JSON file in ``variants/`` (or any path):
      "think": {"plan": true, "default": false},   # per stage: a phase name, "work" or "review"
      "stop_after": "plan",                         # phased: end after this phase (to test the early phases)
      "style": false,                               # leave out tai agent's working style (prompt.STYLE)
-     "nudges": false}                              # turn off the loop's nudges (tai.agent.nudges)
+     "nudges": false,                              # turn off the loop's nudges (tai.agent.nudges)
+     "recheck": true}                              # the loop's requirements check before a turn ends
 The file name is the variant's name, and results are grouped by it.
 """
 
@@ -32,6 +33,7 @@ class Variant:
     prompt_by_domain: dict[str, str] = field(default_factory=dict)
     style: bool = True
     nudges: bool = True
+    recheck: bool = False
 
     @classmethod
     def load(cls, spec: str) -> Variant:
@@ -49,7 +51,7 @@ class Variant:
                      for d in {*base.prompt_by_domain, *data.get("prompt_by_domain", {})}}
         return cls(path.stem, mode, base.prompt + data.get("prompt", ""), {**base.think, **data.get("think", {})},
                    data.get("stop_after", base.stop_after), by_domain, style=data.get("style", base.style),
-                   nudges=data.get("nudges", base.nudges))
+                   nudges=data.get("nudges", base.nudges), recheck=data.get("recheck", base.recheck))
 
     def prompt_for(self, domain: str) -> str:
         """What the variant adds to the system prompt for a task of ``domain``."""

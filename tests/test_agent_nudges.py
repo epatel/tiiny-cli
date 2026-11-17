@@ -78,3 +78,51 @@ def test_the_loop_adds_the_fix_loop_note_to_the_tool_result(project):
     list(agent.run("Fix the bug."))
     last_tool = [m for m in agent.messages if m["role"] == "tool"][-1]
     assert "failed 4 times in a row" in last_tool["content"] and "Fix the bug." in last_tool["content"]
+
+
+TASK = """Add a bulk discount to the pricing module.
+
+- Lines with at least ten units get ten percent off.
+- Round the discount to cents per line.
+
+## Tests
+Keep the existing behaviour working. Add tests of your own for the new rule."""
+
+
+def test_requirements_split_bullets_and_sentences_and_skip_headings():
+    from tai.agent.nudges import requirements
+    assert requirements(TASK) == ["Add a bulk discount to the pricing module.",
+                                  "Lines with at least ten units get ten percent off.",
+                                  "Round the discount to cents per line.",
+                                  "Keep the existing behaviour working.",
+                                  "Add tests of your own for the new rule."]
+    assert requirements("Fix it.") == []
+
+
+def test_recheck_once_per_turn_and_only_after_edits():
+    nudges = Nudges()
+    nudges.new_turn(TASK)
+    assert nudges.before_done() is None  # nothing was changed: a question, not work
+    nudges.after_tool("edit", {"path": "x"}, "ok")
+    check = nudges.before_done()
+    assert "3. Round the discount to cents per line." in check and "missing" in check
+    assert nudges.before_done() is None
+    nudges.new_turn("One short line.")
+    nudges.after_tool("write", {"path": "x"}, "ok")
+    assert nudges.before_done() is None  # fewer than two requirements: nothing to check
+
+
+def test_the_loop_rechecks_before_ending_when_enabled(project):
+    agent, client, _ = make(project, tool_reply("write", {"path": "b.txt", "content": "x"}),
+                            text_reply("Done."), text_reply("1. ok\nAll ok."))
+    agent.config.recheck = True
+    events = list(agent.run(TASK))
+    assert any(isinstance(e, Notice) and "requirements" in e.text for e in events)
+    assert events[-1] == TurnEnd("done") and len(client.requests) == 3
+    assert "Round the discount to cents per line." in client.requests[2]["messages"][-1]["content"]
+
+
+def test_recheck_is_off_by_default(project):
+    agent, client, _ = make(project, tool_reply("write", {"path": "b.txt", "content": "x"}), text_reply("Done."))
+    list(agent.run(TASK))
+    assert len(client.requests) == 2

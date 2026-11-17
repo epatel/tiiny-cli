@@ -9,6 +9,11 @@ Seen in the benchmarks (2026-11-17, Qwen3.6-35B-A3B-Turbo):
   between: 15–58 min runs with 20–100 test runs. Prompt lines asking the model to stop after a few
   failures did nothing. ``after_tool`` appends a note to the result of the ``FIX_LOOP``-th failing run
   of the same bash command in a row (and every ``FIX_LOOP`` after), quoting the task again.
+- **Explicit requirements lost to habit** (optional, ``AgentConfig.recheck``). The task says "round per
+  line" or "call ``clock.now()`` through the module", the model writes the common idiom instead, and a
+  prompt line asking it to re-check did nothing. When a turn that changed files is about to end,
+  ``before_done`` returns the task split into numbered requirements (``requirements``) and asks for
+  each one: done where, or missing and then fixed. Once per turn.
 """
 
 from __future__ import annotations
@@ -42,6 +47,44 @@ def announces(text: str) -> bool:
     return bool(_ANNOUNCES.search(text.strip()[-300:]))
 
 
+RECHECK = """Before you finish, check your work against the task's requirements below, one at a time. Read the code \
+you changed again; don't answer from memory. For each requirement, write its number and either "ok: <file and \
+function where it's done>" or "missing: <what>". Then fix every missing one and run the tests again. If all are \
+ok, say so in one line.
+
+{items}"""
+MAX_ITEMS = 30
+_BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z`\"(])")
+
+
+def requirements(task: str) -> list[str]:
+    """The task as a list of requirements: each bullet, and each sentence of the other paragraphs.
+    Headings and very short fragments are left out."""
+    items: list[str] = []
+    for block in re.split(r"\n\s*\n", task):
+        for line in _lines(block):
+            parts = [_BULLET.sub("", line)] if _BULLET.match(line) else _SENTENCE_END.split(line)
+            items += [p.strip() for p in parts if len(p.split()) >= 4]
+    return items[:MAX_ITEMS]
+
+
+def _lines(block: str) -> list[str]:
+    """A paragraph joined into one line, or its lines when it is a list (bullets stay apart)."""
+    lines = [ln.strip() for ln in block.strip().splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    if any(_BULLET.match(ln) for ln in lines):
+        return lines
+    return [" ".join(lines)] if lines else []
+
+
+def recheck_message(task: str) -> str | None:
+    """The requirements check for ``task``, or None when it has fewer than two requirements."""
+    items = requirements(task)
+    if len(items) < 2:
+        return None
+    return RECHECK.format(items="\n".join(f"{n}. {item}" for n, item in enumerate(items, 1)))
+
+
 def _failed(result: str) -> bool:
     m = _EXIT.match(result)
     return bool(m) and m.group(1) != "0"
@@ -52,10 +95,20 @@ class Nudges:
     task: str = ""
     continues: int = 0
     streak: dict = field(default_factory=lambda: {"command": "", "count": 0})
+    edited: bool = False  # a write or edit ran in this turn
+    rechecked: bool = False
 
     def new_turn(self, task: str) -> None:
         self.task, self.continues = task, 0
         self.streak = {"command": "", "count": 0}
+        self.edited = self.rechecked = False
+
+    def before_done(self) -> str | None:
+        """The requirements check, once per turn and only after files were changed; else None."""
+        if self.rechecked or not self.edited:
+            return None
+        self.rechecked = True
+        return recheck_message(self.task)
 
     def after_reply(self, msg: dict) -> str | None:
         """A user message to send when the reply announced work without a tool call, else None."""
@@ -70,6 +123,7 @@ class Nudges:
 
     def after_tool(self, name: str, args, result: str) -> str:
         """``result``, with the fix-loop note added when this is a fix loop's ``FIX_LOOP``-th failure."""
+        self.edited = self.edited or name in ("write", "edit")
         if name != "bash" or not isinstance(args, dict):
             return result
         command = " ".join(str(args.get("command", "")).split())

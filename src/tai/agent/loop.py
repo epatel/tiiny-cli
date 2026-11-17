@@ -163,6 +163,7 @@ class AgentConfig:
     tools: dict[str, Tool] = field(default_factory=lambda: dict(TOOLS))  # built-ins + skill + MCP
     context_window: int = 0  # the model's context size in tokens; 0 = unknown (no budget checks)
     nudges: bool = True  # continue after an announced-but-not-done reply; break fix loops (agent/nudges.py)
+    recheck: bool = False  # before a turn that changed files ends, check the task's requirements one by one
 
 
 @dataclass
@@ -341,12 +342,17 @@ class Agent:
         return self._budget_events()
 
     def _no_calls(self) -> tuple[list[Event], bool]:
-        """A reply without tool calls ends the turn, unless it only announced what it would do."""
+        """A reply without tool calls ends the turn, unless it only announced what it would do, or the
+        task's requirements are still to be checked (``recheck``)."""
         nudge = self.nudges.after_reply(self.messages[-1]) if self.config.nudges else None
-        if nudge is None:
+        if nudge is not None:
+            self._append({"role": "user", "content": nudge})
+            return [Notice("The model said what it would do but didn't do it — asked it to continue")], False
+        check = self.nudges.before_done() if self.config.recheck else None
+        if check is None:
             return [TurnEnd("done")], True
-        self._append({"role": "user", "content": nudge})
-        return [Notice("The model said what it would do but didn't do it — asked it to continue")], False
+        self._append({"role": "user", "content": check})
+        return [Notice("Asked the model to check its work against the task's requirements")], False
 
     def _budget_events(self) -> tuple[list[Event], bool]:
         use = ContextUse(self.tokens, self.config.context_window)
