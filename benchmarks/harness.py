@@ -295,6 +295,7 @@ def run_task(run: Run, setup: Setup) -> RunResult:
     if not variant.style:
         agent.config.system = agent.config.system.replace(STYLE, "", 1)
     agent.config.system += variant.prompt_for(task.domain)
+    agent.config.nudges = variant.nudges
     if variant.mode != "phased" and setup.limits.compact:
         Compactor(agent, setup.limits.compact)
     driver = Driver(agent, setup.limits, setup.log)

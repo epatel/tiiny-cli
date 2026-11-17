@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
 
+from tai.agent.nudges import Nudges
 from tai.agent.tools import TOOLS, Preview, Tool, ToolContext, ToolError
 from tai.client import TiinyError
 
@@ -161,6 +162,7 @@ class AgentConfig:
     max_steps: int = MAX_STEPS  # 0 = no limit; not applied in phased work (the budget ends a phase)
     tools: dict[str, Tool] = field(default_factory=lambda: dict(TOOLS))  # built-ins + skill + MCP
     context_window: int = 0  # the model's context size in tokens; 0 = unknown (no budget checks)
+    nudges: bool = True  # continue after an announced-but-not-done reply; break fix loops (agent/nudges.py)
 
 
 @dataclass
@@ -257,6 +259,7 @@ class Agent:
         self._wrapped = False  # the wrap-up message was sent in this context
         self._end: TurnEnd | None = None  # a tool asked to end the turn (end_turn)
         self.compactor: Compactor | None = None  # compacts the conversation when the context fills up
+        self.nudges = Nudges()
 
     @property
     def messages(self) -> list[dict]:
@@ -298,6 +301,7 @@ class Agent:
         self.start_turn()
         yield from self._compact_if_due()
         self._append({"role": "user", "content": text})
+        self.nudges.new_turn(text)
         try:
             yield from self._steps()
         except TiinyError as e:
@@ -333,8 +337,16 @@ class Agent:
         if self._end is not None:
             return [self._end], True
         if not calls:
-            return [TurnEnd("done")], True
+            return self._no_calls()
         return self._budget_events()
+
+    def _no_calls(self) -> tuple[list[Event], bool]:
+        """A reply without tool calls ends the turn, unless it only announced what it would do."""
+        nudge = self.nudges.after_reply(self.messages[-1]) if self.config.nudges else None
+        if nudge is None:
+            return [TurnEnd("done")], True
+        self._append({"role": "user", "content": nudge})
+        return [Notice("The model said what it would do but didn't do it — asked it to continue")], False
 
     def _budget_events(self) -> tuple[list[Event], bool]:
         use = ContextUse(self.tokens, self.config.context_window)
@@ -390,6 +402,8 @@ class Agent:
         label = tool.summary(args) if tool and isinstance(args, dict) else name
         yield ToolStart(call["id"], name, label)
         result, ok, denied = self._execute(tool, name, args)
+        if self.config.nudges:
+            result = self.nudges.after_tool(name, args, result)
         self._append({"role": "tool", "tool_call_id": call["id"], "content": result})
         yield ToolEnd(call["id"], name, result, ok, denied)
 
