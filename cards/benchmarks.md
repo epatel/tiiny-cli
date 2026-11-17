@@ -54,6 +54,7 @@ These benchmarks compare `tai agent` in plain mode (one conversation) with phase
 - **Blinding:** `Pair.a_first` is seeded by task + run number, so a re-review shows the same order.
 - **Read the SDK stream to the end** (`ask_claude`): returning from inside `async for` over `query()` leaves the generator open and prints `aclose(): asynchronous generator is already running`.
 - **First check** (`20261117-scripted-5`, ts, plain vs scripted): on pair 3 it picked plain for the right reasons (two `debug_*.ts` files left, rewritten unrelated code, copied logic). The first prompt gave every criterion to the same winner (a halo effect), so the prompt now asks it to judge each criterion on its own.
+- **Second check** (`20261117-quality-1`): its reasons were concrete and right. It flagged two q-py-bulk runs that rounded the summed discount, against the task. The hidden test had numbers where both roundings agree; fixed, and regrading failed exactly those two. When the review and the tests disagree, check the test.
 - `q-py-pagefix`'s grader checks that a project test fails on the original code. It keeps a copy in `buggy/` (the grader is staged without `repo/`); a test keeps it equal to `repo/`.
 
 ## Adding a task

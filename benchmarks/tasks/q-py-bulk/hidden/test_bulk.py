@@ -22,8 +22,8 @@ def test_only_bulk_lines_count():
 
 
 def test_rounded_per_line():
-    order = Order([Line("a", Decimal("0.15"), 10), Line("b", Decimal("0.15"), 10)])
-    assert sum(discounts(order).values()) == Decimal("0.30")  # 0.15 + 0.15, not round(0.30)
+    order = Order([Line("a", Decimal("0.15"), 11), Line("b", Decimal("0.15"), 11)])
+    assert sum(discounts(order).values()) == Decimal("0.34")  # 0.17 + 0.17; rounding the sum gives 0.33
 
 
 def test_stacks_with_member_and_coupon():
