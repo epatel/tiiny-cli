@@ -89,7 +89,7 @@ Built in: `plain`, `phased`, `checklist`, `phased-think-plan` and `plan-only` ru
 | requests, minutes | model calls and wall-clock time |
 | tok/s | writing speed (tokens written per second of writing, from the device's timings) |
 
-A third table, **process**, shows how the runs worked (`benchmarks/process.py`): `health` (aihealth's score of the finished code; code tasks only), `overhead` (share of written tokens that didn't go into a deliverable, by the task's `deliverables` globs), `rewrites` (whole-file writes of a file already written), `strays` (files left behind that aren't deliverables), and the time to the first deliverable.
+A third table, **process**, shows how the runs worked (`benchmarks/process.py`): `health` (aihealth's score of the finished code; code tasks only), `code` / `ref` (the scan score of only the source files the run changed, and the reference solution's), `smells +/-` (`aihealth delta` of the change against the starting repo: smells added or worsened / fixed or eased), `overhead` (share of written tokens that didn't go into a deliverable, by the task's `deliverables` globs), `rewrites` (whole-file writes of a file already written), `strays` (files left behind that aren't deliverables), and the time to the first deliverable.
 
 A second table, **written tokens by reply kind**, splits the tokens the model wrote by what each reply did: a tool call (`write`, `edit`, `bash`, `phase_done`, …) or plain `text`. Writing is the slow part on the device, so this shows where a run's time went.
 

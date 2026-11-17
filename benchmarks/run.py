@@ -277,7 +277,8 @@ def left_out(broken: list[harness.RunResult]) -> None:
 def process_table(results: list[harness.RunResult]) -> Table:
     """How the runs worked (means per group; see benchmarks/process.py)."""
     table = Table(title="process (lower overhead, rewrites and strays are better)")
-    for col in ("task", "model", "mode", "health", "code", "ref", "overhead", "rewrites", "strays", "1st deliverable"):
+    for col in ("task", "model", "mode", "health", "code", "ref", "smells +/-", "overhead", "rewrites", "strays",
+                "1st deliverable"):
         table.add_column(col, justify="left" if col in ("task", "model", "mode") else "right")
     for (task, model, mode), rows in grouped(results):
         cells = process_cells([r.process for r in rows if r.process])
@@ -292,7 +293,16 @@ def code_cells(rows: list[harness.RunResult]) -> list[str]:
     """Mean health of the changed source files (passing runs only), and the reference solution's."""
     code = [r.process["code"] for r in rows if r.score >= PASSING and r.process.get("code") is not None]
     refs = [r.process["code_ref"] for r in rows if r.process.get("code_ref") is not None]
-    return [f"{statistics.mean(code):.2f}" if code else "–", f"{refs[0]:.2f}" if refs else "–"]
+    return [f"{statistics.mean(code):.2f}" if code else "–", f"{refs[0]:.2f}" if refs else "–", smell_cell(rows)]
+
+
+def smell_cell(rows: list[harness.RunResult]) -> str:
+    """Mean smells added / fixed by the change (aihealth delta), over runs that have them."""
+    have = [r.process for r in rows if r.process and r.process.get("smells_added") is not None]
+    if not have:
+        return "–"
+    added = statistics.mean(p["smells_added"] for p in have)
+    return f"+{added:.1f} / -{statistics.mean(p['smells_fixed'] for p in have):.1f}"
 
 
 def process_cells(rows: list[dict]) -> list[str]:

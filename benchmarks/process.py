@@ -10,6 +10,11 @@
   by lines; ``code_ref`` is the same for the task's reference solution. A second grade next to the
   tests: they say whether it works, this says how maintainable the change is. Only meaningful for
   runs that pass (an untouched repo scores well).
+- ``delta``: aihealth's verdict on the change itself (``aihealth delta`` of the finished repo against the
+  starting one, tests included): improved / unchanged / degraded. ``smells_added`` counts the smells the
+  run introduced or made worse, ``smells_fixed`` those it removed or eased, and ``smells`` names the
+  added ones. ``code`` scores whole files, so a small change to a file rarely moves it; the delta sees
+  each smell the change adds (a leftover debug file, copied logic, a long new function).
 """
 
 from __future__ import annotations
@@ -40,6 +45,10 @@ class Process:
     health: float | None = None
     code: float | None = None
     code_ref: float | None = None
+    delta: str | None = None
+    smells_added: int | None = None
+    smells_fixed: int | None = None
+    smells: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -75,11 +84,20 @@ def measure(task, repo: Path, log: Path) -> Process:
                 tally.add(json.loads(line))
         tally.into(found)
     if task.domain in CODE:
-        report = scan(repo) or {}
-        found.health = report.get("score")
-        found.code = code_health(report, repo, task.folder / "repo")
-        found.code_ref = reference(task.folder)
+        code_metrics(found, repo, task.folder)
     return found
+
+
+def code_metrics(found: Process, repo: Path, task_folder: Path) -> None:
+    """aihealth on the finished repo: the scan (whole files) and the delta (what the change added)."""
+    start = task_folder / "repo"
+    report = scan(repo) or {}
+    found.health = report.get("score")
+    found.code = code_health(report, repo, start)
+    found.code_ref = reference(task_folder)
+    change = delta(repo, start)
+    if change is not None:
+        found.delta, found.smells_added, found.smells_fixed, found.smells = summarize_delta(change)
 
 
 class Tally:
@@ -166,6 +184,42 @@ def scan(repo: Path) -> dict | None:
         return None
     finally:
         Path(cfg.name).unlink(missing_ok=True)
+
+
+COPY_IGNORE = shutil.ignore_patterns(".tai", "node_modules", "__pycache__", ".pytest_cache", "*.pyc", *HIDDEN_TESTS)
+ADDED, EASED = ("new", "worsened"), ("fixed", "improved")
+GIT = ["git", "-c", "user.name=bench", "-c", "user.email=bench@localhost", "-c", "commit.gpgsign=false"]
+
+
+def delta(repo: Path, start: Path) -> dict | None:
+    """``aihealth delta`` (JSON) of ``repo`` against ``start``: the starting repo is committed to a
+    scratch git repo and the finished one laid over it. None without aihealth or git."""
+    exe = Path(sys.executable).parent / "aihealth"
+    if not exe.is_file() or not shutil.which("git"):
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp) / "repo"
+        shutil.copytree(start, work, ignore=COPY_IGNORE)
+        for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "--allow-empty", "-m", "start"]):
+            subprocess.run([*GIT, *args], cwd=work, check=True, capture_output=True)
+        for child in work.iterdir():
+            if child.name != ".git":
+                shutil.rmtree(child) if child.is_dir() else child.unlink()
+        shutil.copytree(repo, work, ignore=COPY_IGNORE, dirs_exist_ok=True)
+        try:
+            proc = subprocess.run([str(exe), "delta", "-v", "--format", "json", "--repo", str(work)],
+                                  capture_output=True, text=True, timeout=300)
+            return json.loads(proc.stdout)
+        except (subprocess.TimeoutExpired, json.JSONDecodeError):
+            return None
+
+
+def summarize_delta(report: dict) -> tuple[str, int, int, list[str]]:
+    """(verdict, smells added or worsened, smells fixed or eased, "path: smell in symbol" per added one)."""
+    changes = [c for f in report.get("files", []) for c in f.get("changes", [])]
+    added = [c for c in changes if c.get("kind") in ADDED]
+    named = [f"{c['path']}: {c['smell']}" + (f" in {c['symbol']}" if c.get("symbol") else "") for c in added]
+    return report.get("verdict", "?"), len(added), sum(c.get("kind") in EASED for c in changes), named
 
 
 def code_health(report: dict, repo: Path, start: Path) -> float | None:

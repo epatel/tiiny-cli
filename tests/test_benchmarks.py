@@ -297,6 +297,45 @@ def test_code_columns_count_passing_runs_only(tmp_path, capsys, monkeypatch):
     assert "7.50" in shown and "8.25" in shown and "4.75" not in shown
 
 
+def test_summarize_delta_counts_added_and_eased_smells():
+    report = {"verdict": "degraded", "files": [
+        {"path": "src/a.py", "changes": [
+            {"kind": "new", "smell": "complex_method", "path": "src/a.py", "symbol": "run"},
+            {"kind": "worsened", "smell": "large_file", "path": "src/a.py"},
+            {"kind": "fixed", "smell": "bumpy_road", "path": "src/a.py", "symbol": "old"}]},
+        {"path": "debug.py", "changes": [{"kind": "improved", "smell": "x", "path": "debug.py"}]}]}
+    verdict, added, eased, named = process.summarize_delta(report)
+    assert (verdict, added, eased) == ("degraded", 2, 2)
+    assert named == ["src/a.py: complex_method in run", "src/a.py: large_file"]
+
+
+@pytest.mark.skipif(not (Path(sys.executable).parent / "aihealth").is_file() or shutil.which("git") is None,
+                    reason="needs aihealth and git")
+def test_delta_compares_the_finished_repo_with_the_start(tmp_path):
+    start, repo = tmp_path / "start", tmp_path / "repo"
+    (start / "pkg").mkdir(parents=True)
+    (start / "pkg" / "a.py").write_text("def f(x):\n    return x\n")
+    shutil.copytree(start, repo)
+    branches = "".join(f"    if x == {i}:\n        return {i}\n" for i in range(14))
+    (repo / "pkg" / "a.py").write_text(f"def f(x):\n{branches}    return x\n")
+    (repo / "tests_hidden").mkdir()
+    (repo / "tests_hidden" / "test_x.py").write_text("def test(): pass\n")  # the grader's: left out
+    report = process.delta(repo, start)
+    verdict, added, _, named = process.summarize_delta(report)
+    assert verdict == "degraded" and added >= 1 and any("complex_method in f" in n for n in named)
+    assert all("tests_hidden" not in f["path"] for f in report["files"])
+    assert process.summarize_delta(process.delta(start, start))[:2] == ("unchanged", 0)
+
+
+def test_process_table_shows_smells(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(bench_run.out, "width", 250)
+    rows = [harness.RunResult("t", "plain", n, score=1.0, process={"smells_added": n, "smells_fixed": 0})
+            for n in (1, 4)]
+    (tmp_path / "results.jsonl").write_text("\n".join(r.to_json() for r in rows))
+    assert bench_run.main(["--report", str(tmp_path)]) == 0
+    assert "+2.5 / -0.0" in capsys.readouterr().out
+
+
 def test_summary_table(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(bench_run.out, "width", 200)
     rows = [harness.RunResult("t", "plain", 1, score=0.5, requests=4, seconds=60, prompt_tokens=1000,
