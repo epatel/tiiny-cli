@@ -1,3 +1,0 @@
-{"domain": "research", "summary": "Answer questions from a folder of conflicting documents about a fictional railway, and write a briefing",
- "judge": {"files": ["report.md"], "rubric": ["accurate: every figure matches the right (corrected) source", "complete: covers network, ridership, fleet, money, constraints and decisions", "flags the disagreements between sources and explains which figure was used", "clear and well organised for a new board member"]},
- "deliverables": ["answers.md", "report.md"]}

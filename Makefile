@@ -3,7 +3,7 @@ BIN    := $(VENV)/bin
 PREFIX ?= $(HOME)/.local
 PYTHON ?= python3
 
-.PHONY: help setup test health scan check bench bench-check link unlink clean
+.PHONY: help setup test health scan check link unlink clean
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -30,12 +30,6 @@ scan: setup  ## Code-health overview of the whole project
 	$(BIN)/aihealth scan . --max-findings 5
 
 check: test health  ## Everything to run before committing
-
-bench: setup  ## Benchmark tai agent plain vs phased on the device (ARGS="-t ts-templates -n 3"; slow)
-	$(BIN)/python benchmarks/run.py $(ARGS)
-
-bench-check: setup  ## Check the benchmark graders (no device)
-	$(BIN)/python benchmarks/run.py --check
 
 link: setup  ## Put `tai` on PATH via $(PREFIX)/bin
 	mkdir -p $(PREFIX)/bin

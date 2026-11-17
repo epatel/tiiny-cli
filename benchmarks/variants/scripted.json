@@ -1,4 +1,0 @@
-{
- "extends": "plain",
- "prompt": "\n# Batch work in scripts\nEach tool call costs a full model turn, so do routine multi-step work in one bash call instead of many small calls:\n- To look at several files, search, count or check things, write one short Python (or shell) script that does it all and prints only what you need, not whole files.\n- To check your work, run one script that runs the tests and checks the task's explicit requirements together.\n- Use read/edit/write for the files you change; use scripts for looking around and checking.\n"
-}

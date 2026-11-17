@@ -1,3 +1,0 @@
-{"domain": "writing", "summary": "Write a five-chapter short story from a brief: structure rules are checked, quality by the optional judge",
- "judge": {"files": ["story/characters.md", "story/01.md", "story/02.md", "story/03.md", "story/04.md", "story/05.md"], "rubric": ["plot: coherent, with the past secret set up early and paid off in the last chapter", "consistency: characters, names, places and details stay the same across chapters", "the compass: its mystery builds and its reveal is satisfying", "characters: each named character wants something and acts on it", "prose: vivid, varied and free of clichés and repetition"]},
- "deliverables": ["story/**"]}

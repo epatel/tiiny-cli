@@ -226,8 +226,9 @@ The server forwards the device API after checking the key, and never shares the 
 make test    # unit tests (mocked, no device needed)
 make check   # tests + code-health delta; run before committing
 make help    # all targets
-make bench   # benchmark tai agent with and without phased work on the device (see benchmarks/README.md)
 ```
+
+The benchmarks of `tai agent` (a harness that runs it headless on the device, graded tasks, and a blind Claude review of the results) are on the [`benchmarks`](../../tree/benchmarks) branch.
 
 `tai --version` adds the build from git when tai runs from its checkout: `build 47 (9138ee6)`, the number of commits and the commit, plus `+ changes` when the tracked files differ from it.
 

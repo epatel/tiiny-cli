@@ -1,4 +1,0 @@
-{
- "extends": "lean-shape",
- "prompt": "\n# Finishing\n- Before you say you are done, re-read the task and check each explicit requirement (names, signatures, how things must be called, limits) against what you wrote. Fix any that don't match.\n- If the tests fail 3 times in a row, stop editing. Re-read the spec and the failing case, find the cause, then make one fix.\n"
-}

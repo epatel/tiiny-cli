@@ -1,4 +1,0 @@
-# Benchmark tasks are fixtures for the agent (starting repos, reference solutions, hidden tests),
-# with interfaces fixed by each task's spec; they aren't tai's code.
-[scan]
-exclude = ["benchmarks/tasks/*"]

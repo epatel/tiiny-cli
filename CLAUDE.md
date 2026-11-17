@@ -23,7 +23,7 @@ These are standard and used the standard way. There are no cards for them: read 
 - Run: `.venv/bin/tai --help` (e.g. `.venv/bin/tai models`, `.venv/bin/tai ask "hi"`, `.venv/bin/tai agent` in a project folder)
 - Test: `make test` (one test: `.venv/bin/pytest tests/test_models.py::test_swap_unloads_the_least_npu_that_makes_room`)
 - Before committing: `make check` (tests + `aihealth delta`). `make scan` gives a project health overview
-- Benchmarks: `make bench-check` (graders, no device); `make bench` runs plain vs phased on the device (slow, the user runs it)
+- Benchmarks of `tai agent` (harness, tasks, Claude review) live on the `benchmarks` branch, not on main
 - Put `tai` on PATH: `make link` (symlink in `~/.local/bin`); `make clean` removes caches
 - Live runs against the device: set `TAI_HOME=<scratch dir>` so test sessions stay out of the user's history. Note that a live run may unload the user's models.
 
@@ -40,7 +40,6 @@ Enforced by hooks (`.claude/settings.json`): `pip install` outside `.venv/bin/` 
 - [agent](cards/agent.md) — anything in `src/tai/agent/` (`tai agent`): the loop, permissions, the TUI, `/tiiny` device commands, the model and thinking, agent sessions, a model swapped out by a tool, how agent tests are written
 - [agent-tools](cards/agent-tools.md) — the agent's MCP servers (`tai mcp`), skills (`tai skills`), browser viewer + image/video/show/ask tools, or web_search/web_fetch
 - [agent-context](cards/agent-context.md) — the agent's context limits: phased work (`/phase`, `.tai/work/`), compaction (`/compact`, `agent.compact`), or the context budget
-- [benchmarks](cards/benchmarks.md) — `benchmarks/` (plain vs phased runs on the device): the harness, sandbox, graders, adding a task
 - [tiiny-api-notes](cards/tiiny-api-notes.md) — a device feature tai doesn't use yet (vault/kb, OCR, rerank, music, video, Jev classification, image editing), image seed/steps/sizes or TRELLIS stage params (from Tiiny Studio's code), odd device behaviour (502 after a restart, 504 after ~10 min, `xh2a backend fail`), or privacy of chats on the device
 - [serve](cards/serve.md) — `tai serve`, client mode (`--url`/`TAI_URL` + `TAI_API_KEY`), nginx prefix, forwarding/streaming/auth
 - [npu-swapping](cards/npu-swapping.md) — anything about loading/unloading models (`src/tai/loader.py`), NPU budget, "Cannot allocate memory", or which model is picked by default

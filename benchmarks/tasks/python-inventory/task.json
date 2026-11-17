@@ -1,2 +1,0 @@
-{"domain": "python", "summary": "Add expiring reservations to a small inventory package and its CLI", "hidden_tests": 17,
- "deliverables": ["inventory/**", "tests/**"]}

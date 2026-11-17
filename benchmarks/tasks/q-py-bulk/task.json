@@ -1,1 +1,0 @@
-{"domain": "python", "suite": "quick", "summary": "Add a bulk discount rule to an existing rules pattern", "hidden_tests": 6, "deliverables": ["shop/**", "tests/**"]}

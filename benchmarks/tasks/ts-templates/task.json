@@ -1,2 +1,0 @@
-{"domain": "typescript", "summary": "Grow a variables-only template engine into a small Handlebars-like language with errors that carry line numbers", "hidden_tests": 20,
- "deliverables": ["src/**", "tests/**"]}

@@ -37,7 +37,7 @@ A Python CLI (`tai`) that makes every model installed on the user's Tiiny device
   - [x] tests (loop + runner with the fake stream, TUI pilot), card
   - [x] breakdown entry points: `tai agent --phase TASK`, and a `start_phases` tool the agent can call for a big task (asks first; the conversation becomes the background)
   - [ ] live run by the user
-- [ ] M10 — Benchmark plain vs phased (2026-11-14): `benchmarks/run.py`, headless agent loop, sandboxed bash, four tasks (Python, TypeScript, research, writing) with hidden tests or checks + optional model judge
+- [ ] M10 — Benchmark plain vs phased (2026-11-14; on the `benchmarks` branch since 2026-11-18): `benchmarks/run.py`, headless agent loop, sandboxed bash, four tasks (Python, TypeScript, research, writing) with hidden tests or checks + optional model judge
   - [x] harness, graders with reference solutions (`--check`), tests with the fake model
   - [ ] first device run by the user (`make bench`, then `-n 3`)
 - [x] `tai top` (2026-11-14; a separate `tai-top` program until 2026-11-16): live full-screen monitor of the device (NPU/CPU graphs, memory, NPU memory, budget, per-core bars, loaded models); Unicode block characters, `--ascii` (or a non-UTF-8 locale) for plain ASCII. User request.
@@ -74,6 +74,7 @@ One line each; the how and why live in the cards and the code.
 - 2026-11-14 — Agent step limit 50 → 200, `agent.max_steps` (or off), none in phased work: the context budget ends a phase. User report (stopped too early).
 - 2026-11-14 — Benchmarks: a standalone `benchmarks/run.py`, not a tai command; bash under macOS sandbox-exec; Python, TypeScript, research and writing tasks. User choices; task fixtures excluded from aihealth (`.aihealth.toml`).
 - 2026-11-14 — Compaction: summary + latest messages, manual and automatic at 85%, off in phases. `compact.py` keeps aihealth's Primitive Obsession (messages are plain dicts throughout tai).
+- 2026-11-18 — Benchmark work (`benchmarks/`, its tests and card, `make bench`, the `bench` extra) moved to the `benchmarks` branch; main keeps only what ships in tai (nudges, recheck, `STYLE`). The benchmark notes below refer to that branch. User request.
 - 2026-11-18 — Requirements check on by default in `tai agent` (`agent.recheck`, `/recheck on|off`); not in phases. Benchmarks: `plain` includes it, `no-recheck` leaves it out. User choice after the recheck run.
 - 2026-11-17 — Loop requirements check (`AgentConfig.recheck`, off by default): before a turn that changed files ends, the task is shown again as numbered requirements to mark ok/missing and fix. Measured as variant `recheck` before turning it on. User request.
 - 2026-11-17 — Benchmarks also run `aihealth delta` per run (the change against the starting repo: smells added/fixed), next to the scan (`health`, `code`), which only sees whole files. User request.
@@ -94,7 +95,7 @@ One line each; the how and why live in the cards and the code.
 - 2026-11-15 — Benchmarks: runs cut off by `--timeout` are marked `timed_out` (log + summary column); `--timeout 0` = no limit. The default stays 60 min. User report (3 of 7 first-run results were cut off, phased hit hardest).
 
 ## Current state / handoff
-- **Built:** every command in M2 plus `info`, `video`, `-x`, `serve`/client mode, and `tai agent` with tools, viewer, media, web, MCP, skills, `/tiiny`, phased work (M9) and compaction. 338 unit tests pass (no device needed), also in CI on Python 3.10–3.13 + macOS.
+- **Built:** every command in M2 plus `info`, `video`, `-x`, `serve`/client mode, and `tai agent` with tools, viewer, media, web, MCP, skills, `/tiiny`, phased work (M9) and compaction. 298 unit tests pass (benchmark tests are on the `benchmarks` branch) (no device needed), also in CI on Python 3.10–3.13 + macOS.
 - **Checked live:** all seven original models, plus `tai info`, `tai video` and `-x` (2026-11-08/09). Results and timings are in the cards (device-api, agent). The user has used `tai agent` (the 2026-11-09 thinking-label report), but the M6 live-run item is still open.
 - **Not run live yet:** phased work, compaction, and the `video` tool inside the TUI.
 - **Device, 2026-11-15:** Qwen3.6-35B-A3B-Turbo and Qwen3.8-27B loaded (98%); `default.agent` is Qwen3.6-35B-A3B-Turbo (set 2026-11-16). Tool-capable chat models: those two, Qwen3.6-35B-A3B, Qwen3.8-27B-heretic-ara-Turbo (59%), Qwen3-Coder-Next (94%, 131K). Writing speed, thinking off, short prompt: Qwen3.6-35B-A3B-Turbo 47 tok/s, Qwen3.8-27B 19 tok/s. Don't reload the coder model unasked; a live run may unload the user's models.

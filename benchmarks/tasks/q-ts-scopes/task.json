@@ -1,1 +1,0 @@
-{"domain": "typescript", "suite": "quick", "summary": "Add outer-scope lookup and ../ paths to a template engine", "hidden_tests": 10, "deliverables": ["src/**", "tests/**"]}
