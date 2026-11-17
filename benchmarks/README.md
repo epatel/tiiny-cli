@@ -30,7 +30,7 @@ flowchart LR
 
 ## Quick suite and variants (for iterating)
 
-`--quick` runs four small tasks (`q-*`), a few minutes each on Qwen3.6-35B-A3B-Turbo, aimed at what went wrong in the full runs:
+`--quick` runs six small tasks (`q-*`), a few minutes each on Qwen3.6-35B-A3B-Turbo, aimed at what went wrong in the full runs:
 
 | task | checks | aimed at |
 |---|---|---|
@@ -38,6 +38,19 @@ flowchart LR
 | `q-python-clock` | 12 hidden pytest tests | the clock seam and expiry, the python misses |
 | `q-research-ferry` | 5 questions, sources, a short summary | corrected and unreliable figures, deliverables in the right place |
 | `q-story-letter` | two chapters with rules | writing the deliverable before any scaffolding |
+| `q-py-bulk` | 6 hidden pytest tests + own tests | a small feature that should fit an existing pattern (a discount rule): quality, for `review.py` |
+| `q-py-pagefix` | 6 hidden pytest tests + a regression test that fails on the original | a minimal bug fix from a user report: quality, for `review.py` |
+
+### Claude review (`review.py`)
+
+Tests say whether a change works, not whether it is good code. `review.py` has Claude (Opus 5.5, through the Claude Agent SDK, which uses the Claude Code login: no API key) compare two variants' runs of the same task side by side, blind (`A`/`B` in random order), with read-only tools, on five points: task, focus, fit, readable, tests. Runs are paired by number. A choice between two is much less noisy than a score.
+
+```sh
+.venv/bin/pip install -e '.[bench]'
+.venv/bin/python benchmarks/review.py ~/.local/share/tai/bench/<run> -V plain -V bare [-t q-py-bulk]
+```
+
+About $0.20–0.30 of usage per pair (counted against the subscription). Verdicts are appended to `review-<a>-vs-<b>.jsonl` in the run folder.
 
 A **variant** says how the agent is run, so ideas can be compared side by side with `-V` (repeatable; results are grouped by the variant's name). Variants are JSON files in `benchmarks/variants/`, or any `.json` path:
 

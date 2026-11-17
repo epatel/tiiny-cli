@@ -48,6 +48,14 @@ These benchmarks compare `tai agent` in plain mode (one conversation) with phase
 - It runs outside the sandbox, after grading.
 - It is the same model that did the work, so it is good for plain-vs-phased comparisons only.
 
+## Claude review (`review.py`)
+- Claude (Opus 5.5, `claude-agent-sdk`, the `bench` extra) compares two variants' runs pairwise. It gets a temp folder with `task.md`, `original/`, `A/`, `B/` and `A.diff`/`B.diff`, with Read/Grep/Glob only. It returns JSON with a winner per criterion (`CRITERIA`) plus overall. The hidden-test counts are given as fact; it judges quality.
+- **Auth:** the Agent SDK runs the Claude Code CLI, which uses the user's Claude Code login. No `ANTHROPIC_API_KEY` is needed (checked 2026-11-17). `total_cost_usd` is an equivalent cost; a subscription counts it against usage limits.
+- **Blinding:** `Pair.a_first` is seeded by task + run number, so a re-review shows the same order.
+- **Read the SDK stream to the end** (`ask_claude`): returning from inside `async for` over `query()` leaves the generator open and prints `aclose(): asynchronous generator is already running`.
+- **First check** (`20261117-scripted-5`, ts, plain vs scripted): on pair 3 it picked plain for the right reasons (two `debug_*.ts` files left, rewritten unrelated code, copied logic). The first prompt gave every criterion to the same winner (a halo effect), so the prompt now asks it to judge each criterion on its own.
+- `q-py-pagefix`'s grader checks that a project test fails on the original code. It keeps a copy in `buggy/` (the grader is staged without `repo/`); a test keeps it equal to `repo/`.
+
 ## Adding a task
 1. Write the files listed in `benchmarks/README.md`, with an exact spec in `task.md`.
 2. Write a reference solution.

@@ -25,6 +25,10 @@ dev = [
     "respx>=0.21",
     "aihealth @ git+https://github.com/epatel/ai-health@7caab47df75fb864b9783847456829793fa60b7f",  # v0.2.1
 ]
+# benchmarks/review.py: Claude reviews benchmark runs (uses the Claude Code login, no API key)
+bench = [
+    "claude-agent-sdk>=0.2.183",
+]
 
 [project.scripts]
 tai = "tai.cli:main"

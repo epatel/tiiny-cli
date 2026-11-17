@@ -332,3 +332,9 @@ def test_judge_parses_scores():
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs node for the TypeScript task")
 def test_every_grader_scores_its_solution_full_and_the_start_low():
     assert bench_run.main(["--check"]) == 0
+
+
+def test_pagefix_grader_copy_of_the_buggy_code_matches_the_repo():
+    """q-py-pagefix's grader is staged without repo/, so it keeps its own copy of the buggy module."""
+    task = BENCH / "tasks" / "q-py-pagefix"
+    assert (task / "buggy/notes/store.py").read_text() == (task / "repo/notes/store.py").read_text()

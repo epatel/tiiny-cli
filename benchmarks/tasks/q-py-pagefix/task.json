@@ -1,0 +1,1 @@
+{"domain": "python", "suite": "quick", "summary": "Fix an off-by-one pagination bug from a user report, with a regression test", "hidden_tests": 6, "deliverables": ["notes/**", "tests/**"]}
