@@ -98,6 +98,7 @@ tai config set think off                       # default reasoning mode
 tai config set agent.think off                 # the same for tai agent only (also: tai agent --no-think)
 tai config set agent.compact 70                # tai agent compacts at 70% of the context (default 85; off)
 tai config set agent.max_steps 400             # model calls per tai agent turn before it pauses (default 200; off)
+tai config set agent.recheck off               # skip the requirements check before a turn ends (default on)
 tai config set show_thinking off               # tai chat: hide the reasoning text by default
 ```
 
@@ -142,6 +143,7 @@ tai agent --phase "add shell completion"   # phased work on a larger task (below
 | `/phase start <goal>` | Phased work on a larger task (below). `/phase` shows the phases; `/phase help` lists the rest |
 | `/compact [focus]` | Summarise the conversation to free context; the focus says what to keep in detail |
 | `/think on\|off` | Reasoning on or off from the next step |
+| `/recheck on\|off` | The requirements check before a turn ends, for this run |
 | `/tiiny status\|models\|load\|unload\|restart\|shutdown` | Manage the device without leaving the agent |
 | `/view` | Open the browser viewer (images, audio, video, 3D, HTML, and questions from the agent) |
 | `/skills`, `/<skill> [task]` | List skills, or use one |
@@ -191,6 +193,8 @@ Each phase sees only the work folder and the handoffs, never the earlier convers
 </details>
 
 **Compaction.** When the context reaches 85% (`tai config set agent.compact 70`, or `off`), the model summarises the conversation: task, decisions, what's done, current state, next steps. The conversation continues from that summary plus the latest messages. If it fails or you press Esc, nothing changes. The full conversation stays saved as its own session.
+
+**Requirements check.** When a turn that changed files is about to end, the agent gets the task back as a numbered list of requirements, rereads its changes, marks each one ok or missing, and fixes what's missing. In benchmarks this cut missed explicit requirements (such as "round per line" or "call `clock.now()` through the module") from 5 of 9 runs to none, for about 20% more model calls. `/recheck off` or `tai config set agent.recheck off` turns it off.
 
 **Step limit.** One prompt may lead to many model calls (read, edit, run, read again). After 200 calls in one turn the agent pauses with "step limit reached"; type `continue` to carry on in the same conversation. `tai config set agent.max_steps 400` changes the limit, and `off` removes it. Phased work has no step limit: the context budget ends each phase.
 

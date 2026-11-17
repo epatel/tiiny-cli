@@ -115,14 +115,15 @@ def test_recheck_once_per_turn_and_only_after_edits():
 def test_the_loop_rechecks_before_ending_when_enabled(project):
     agent, client, _ = make(project, tool_reply("write", {"path": "b.txt", "content": "x"}),
                             text_reply("Done."), text_reply("1. ok\nAll ok."))
-    agent.config.recheck = True
     events = list(agent.run(TASK))
     assert any(isinstance(e, Notice) and "requirements" in e.text for e in events)
     assert events[-1] == TurnEnd("done") and len(client.requests) == 3
     assert "Round the discount to cents per line." in client.requests[2]["messages"][-1]["content"]
 
 
-def test_recheck_is_off_by_default(project):
+def test_recheck_is_on_by_default_and_can_be_switched_off(project):
+    assert make(project)[0].config.recheck
     agent, client, _ = make(project, tool_reply("write", {"path": "b.txt", "content": "x"}), text_reply("Done."))
+    agent.config.recheck = False
     list(agent.run(TASK))
     assert len(client.requests) == 2

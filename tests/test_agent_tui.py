@@ -559,3 +559,17 @@ def test_think_command_needs_a_switchable_model(tmp_path):
             await send(pilot, "/think on")
             assert app.thinking is None and "thinking" not in str(app.query_one("#title", Static).content)
     run(main())
+
+
+def test_recheck_command_switches_it_for_the_run(tmp_path):
+    async def main():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            assert app.agent.config.recheck
+            await send(pilot, "/recheck off")
+            assert not app.agent.config.recheck
+            await send(pilot, "/recheck")  # only says what it is
+            assert not app.agent.config.recheck
+            await send(pilot, "/recheck on")
+            assert app.agent.config.recheck
+    run(main())

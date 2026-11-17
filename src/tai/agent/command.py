@@ -90,6 +90,11 @@ def max_steps(app) -> int:
     return 0 if value == "off" else int(value)
 
 
+def recheck(app) -> bool:
+    """`agent.recheck`: on (default) or off — the requirements check before a turn that changed files ends."""
+    return app.store.get_setting("agent.recheck") != "off"
+
+
 def open_session(app, session: SessionRef, model: str | None, root: Path) -> AgentSession:
     """New session in ``root``, or resume one (-r id, or -c: latest in this folder)."""
     store = app.store
@@ -172,7 +177,7 @@ def _build_app(app, s: AgentSession, ext: Extensions, req: AgentRequest) -> Agen
     think = _think_extra(app, s.model, req.think, settings=AGENT_THINK_SETTINGS)
     config = AgentConfig(s.model.id, system_prompt(s.root, s.model.name, ext.prompt), ToolContext(s.root),
                          extra=think, tools=ext.tools, context_window=s.model.context,
-                         max_steps=max_steps(app))
+                         max_steps=max_steps(app), recheck=recheck(app))
     sink = SessionSink(app.store, s)
     transcript = Transcript(s.messages, on_message=sink.save, on_replace=sink.compacted)
     agent = Agent(app.client, config, lambda *a: Decision.DENY, transcript)  # the TUI installs its approver

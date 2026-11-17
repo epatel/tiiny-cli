@@ -163,7 +163,7 @@ class AgentConfig:
     tools: dict[str, Tool] = field(default_factory=lambda: dict(TOOLS))  # built-ins + skill + MCP
     context_window: int = 0  # the model's context size in tokens; 0 = unknown (no budget checks)
     nudges: bool = True  # continue after an announced-but-not-done reply; break fix loops (agent/nudges.py)
-    recheck: bool = False  # before a turn that changed files ends, check the task's requirements one by one
+    recheck: bool = True  # before a turn that changed files ends, check the task's requirements one by one
 
 
 @dataclass
@@ -348,7 +348,7 @@ class Agent:
         if nudge is not None:
             self._append({"role": "user", "content": nudge})
             return [Notice("The model said what it would do but didn't do it — asked it to continue")], False
-        check = self.nudges.before_done() if self.config.recheck else None
+        check = self.nudges.before_done() if self.config.recheck and self.budget is None else None  # not in phases
         if check is None:
             return [TurnEnd("done")], True
         self._append({"role": "user", "content": check})

@@ -9,7 +9,7 @@ A variant is a JSON file in ``variants/`` (or any path):
      "stop_after": "plan",                         # phased: end after this phase (to test the early phases)
      "style": false,                               # leave out tai agent's working style (prompt.STYLE)
      "nudges": false,                              # turn off the loop's nudges (tai.agent.nudges)
-     "recheck": true}                              # the loop's requirements check before a turn ends
+     "recheck": false}                             # turn off the loop's requirements check (on, as in tai agent)
 The file name is the variant's name, and results are grouped by it.
 """
 
@@ -33,7 +33,7 @@ class Variant:
     prompt_by_domain: dict[str, str] = field(default_factory=dict)
     style: bool = True
     nudges: bool = True
-    recheck: bool = False
+    recheck: bool = True
 
     @classmethod
     def load(cls, spec: str) -> Variant:

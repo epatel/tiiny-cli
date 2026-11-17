@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from enum import Enum
 
 from rich.syntax import Syntax
 from rich.text import Text
@@ -42,7 +43,7 @@ from tai.models import ResolveError
 RESULT_PREVIEW = 3000  # characters of a tool result shown when expanded
 
 HELP = """**Keys:** Enter send · Ctrl+J, Alt+Enter or `\\` then Enter for a new line · ↑/↓ earlier prompts · drag to select, Ctrl+C copy · Esc interrupt · Ctrl+C (nothing selected) quit
-**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/think on|off` reasoning from the next request · `/phase start <goal>` phased work (`/phase help`) · `/compact [focus]` summarise the conversation to free context · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
+**Commands:** `/tiiny` manage the device (`/tiiny help`) · `/think on|off` reasoning from the next request · `/recheck on|off` check the work against the task's requirements before finishing · `/phase start <goal>` phased work (`/phase help`) · `/compact [focus]` summarise the conversation to free context · `/clear` forget the conversation · `/view` open the browser viewer · `/skills` · `/mcp` · `/<skill> [task]` use a skill · `/help` · `/exit`
 Before edits and shell commands you'll be asked: **y** yes · **a** always (this session) · **n** no"""
 
 PHASE_HELP = """**Phased work** — each phase starts with a fresh context and works from `.tai/work/<task>/` (plan.md, notes, tools, tests) and the earlier phases' handoffs. It starts with explore and plan; the plan defines the rest.
@@ -56,6 +57,19 @@ class Activity:
     label: str
     detail: str = ""
     started: float = field(default_factory=time.monotonic)
+
+
+class OnOff(Enum):
+    """The argument of a `/think` or `/recheck` switch."""
+    ON = "on"
+    OFF = "off"
+
+    @classmethod
+    def parse(cls, text: str) -> OnOff | None:
+        try:
+            return cls(text.strip().lower())
+        except ValueError:
+            return None
 
 
 @dataclass
@@ -435,7 +449,9 @@ class AgentApp(App):
         elif cmd == "tiiny":
             self._tiiny(arg)
         elif cmd == "think":
-            self._think_cmd(arg.strip().lower())
+            self._think_cmd(OnOff.parse(arg))
+        elif cmd == "recheck":
+            self._recheck_cmd(OnOff.parse(arg))
         elif cmd == "phase":
             self._phase_cmd(arg)
         elif cmd == "compact":
@@ -460,19 +476,27 @@ class AgentApp(App):
     def _update_title(self) -> None:
         self.query_one("#title", Static).update(self._title())
 
-    def _think_cmd(self, arg: str) -> None:
+    def _think_cmd(self, switch: OnOff | None) -> None:
         """/think on|off: switch reasoning for this run, from the next model request."""
         if not self.info.can_think:
             self.notify("This model's thinking can't be switched.", severity="warning")
-        elif arg not in ("on", "off"):
+        elif switch is None:
             now = {None: "the model's default", True: "on", False: "off"}[self.thinking]
             self.notify(f"Thinking is {now}. Use /think on or /think off.")
         else:
             extra = self.agent.config.extra
-            extra["chat_template_kwargs"] = {**extra.get("chat_template_kwargs", {}), "enable_thinking": arg == "on"}
+            extra["chat_template_kwargs"] = {**extra.get("chat_template_kwargs", {}), "enable_thinking": switch is OnOff.ON}
             self._update_title()
             when = " from the next step" if self.busy else ""
-            self.notify(f"Thinking {arg}{when} (this run; `tai config set agent.think` for the default).")
+            self.notify(f"Thinking {switch.value}{when} (this run; `tai config set agent.think` for the default).")
+
+    def _recheck_cmd(self, switch: OnOff | None) -> None:
+        """/recheck on|off: the requirements check before a turn ends, for this run."""
+        if switch is None:
+            self.notify(f"Recheck is {'on' if self.agent.config.recheck else 'off'}. Use /recheck on or /recheck off.")
+            return
+        self.agent.config.recheck = switch is OnOff.ON
+        self.notify(f"Recheck {switch.value} (this run; `tai config set agent.recheck` for the default).")
 
     # -- compaction ------------------------------------------------------
     def _compact_cmd(self, focus: str) -> None:

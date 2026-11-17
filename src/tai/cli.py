@@ -44,6 +44,7 @@ SETTING_KEYS = {
     "agent.think",  # on|off — the same for `tai agent` only (overrides `think` there)
     "agent.compact",  # off or 50-95 — % of the context window at which `tai agent` compacts (default 85)
     "agent.max_steps",  # off or a number >= 10 — model calls per `tai agent` turn (default 200; no limit in phases)
+    "agent.recheck",  # on|off — `tai agent` checks its work against the task's requirements before a turn ends (on)
     "show_thinking",  # on|off — print reasoning in `tai chat` (off: a "thinking…" spinner; `/think show|hide`)
     "tts.instruct",  # default voice-design instruct, e.g. "female, british accent"
 }
@@ -405,6 +406,7 @@ def _on_off(value: str) -> bool:
 SETTING_CHECKS = {  # key: (check, what a valid value is)
     "think": (_on_off, "on or off"),
     "agent.think": (_on_off, "on or off"),
+    "agent.recheck": (_on_off, "on or off"),
     "show_thinking": (_on_off, "on or off"),
     "agent.compact": (_off_or_number(50, 95), "off or a percentage from 50 to 95"),
     "agent.max_steps": (_off_or_number(10), "off or a number of at least 10"),

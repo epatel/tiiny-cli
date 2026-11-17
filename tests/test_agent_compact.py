@@ -178,3 +178,13 @@ def test_compact_command_in_the_tui(project):
             notes = [str(w.content) for w in app.query(".notice")]
             assert any("Compacted 4 messages" in n for n in notes)
     asyncio.run(main())
+
+
+def test_recheck_setting(tmp_path):
+    from tai.agent.command import recheck
+
+    class App:
+        store = Store(tmp_path / "t.db")
+    assert recheck(App)
+    App.store.set_setting("agent.recheck", "off")
+    assert not recheck(App)
