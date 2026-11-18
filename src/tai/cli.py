@@ -29,7 +29,8 @@ from tai.db import Store
 from tai.info import catalog_row, render, reported, reports_options
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
-from tai.models import Model, ResolveError, build_catalog, match_store, resolve, short_tokens
+from tai.models import (SORTS, Model, ResolveError, build_catalog, gigabytes, in_list_order, match_store, resolve,
+                        short_tokens)
 from tai.options import (AgentRequest, AskOutput, AsrOptions, ChatOptions, ImageOptions, Prompt,
                          Question, SavedFile, SessionRef, TtsConfig, bundle, chat_options, extra_option,
                          generator, merge)
@@ -202,19 +203,21 @@ def main():
 # ---------------------------------------------------------------- models
 @cli.command("models")
 @click.option("--json", "as_json", is_flag=True)
+@click.option("--sort", "sort_by", type=click.Choice(SORTS), default="size", show_default=True,
+              help="Order within each type.")
 @pass_app
-def models_cmd(app: App, as_json):
-    """List installed models, what they do, and whether they're loaded."""
+def models_cmd(app: App, as_json, sort_by):
+    """List installed models by type, what they do, and whether they're loaded."""
     models = app.catalog()
     defaults = app.store.settings()
     if as_json:
         out.print_json(json.dumps([m.__dict__ | {"task": m.task} for m in models]))
         return
     t = Table(box=None, header_style="bold")
-    for col in ("", "Name", "Task", "Type", "NPU", "Context"):
-        t.add_column(col, no_wrap=True)
+    for col in ("", "Name", "Type", "Task", "Params", "Size", "NPU", "Context"):
+        t.add_column(col, no_wrap=True, justify="right" if col in ("Params", "Size", "NPU", "Context") else "left")
     t.add_column("Model ID", overflow="fold")
-    for m in sorted(models, key=lambda m: (m.task, m.name)):
+    for m in in_list_order(models, sort_by):
         t.add_row(*_model_row(m, is_default=defaults.get(f"default.{m.task}") == m.id))
     out.print(t)
     used = sum(m.npu for m in models if m.loaded)
@@ -225,7 +228,8 @@ def _model_row(m: Model, is_default: bool) -> tuple[str, ...]:
     mark = "[green]●[/]" if m.loaded else ("[yellow]◐[/]" if m.status not in ("downloaded", "") else "[dim]○[/]")
     context = short_tokens(m.context) if m.context else ""
     star = " *" if is_default else ""
-    return mark, m.name + star, m.task, m.type, f"{m.npu}%", context, f"[dim]{m.id}[/]"
+    return (mark, m.name + star, m.type, m.task, m.params, gigabytes(m.size), f"{m.npu}%", context,
+            f"[dim]{m.id}[/]")
 
 
 @cli.command()

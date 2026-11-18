@@ -344,7 +344,7 @@ def test_tiiny_models_and_shutdown_confirmation(tmp_path):
         app = make_device_app(tmp_path)
         async with app.run_test(size=(100, 30)) as pilot:
             await tiiny(pilot, app, "models")
-            assert "| ● | Coder *(agent)* | chat | 94% |" in texts(app)
+            assert "| ● | Coder *(agent)* | Text Generation |  | 94% |" in texts(app)
             question = await tiiny(pilot, app, "shutdown", answer="n")
             assert "Shut down the Tiiny?" in question
             assert app.agent.client.calls == [] and "Cancelled." in texts(app)

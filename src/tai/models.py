@@ -43,6 +43,8 @@ class Model:
     last_used: float = 0.0  # from running instances (use_time); 0 if unknown
     active: int = 0  # active_request_count
     context: int = 0  # context_window in tokens (chat and embedding models); 0 if not reported
+    size: int = 0  # total_size: bytes on disk; 0 if not reported
+    params: str = ""  # e.g. "35B", as the catalog gives it
 
     @property
     def task(self) -> str:
@@ -83,6 +85,8 @@ class Model:
             thinking=d.get("thinking") or {},
             supported=list(d.get("supported") or []),
             context=_count(d, "context_window"),
+            size=_count(d, "total_size"),
+            params=str(d.get("params") or ""),
         )
 
 
@@ -96,6 +100,20 @@ def short_tokens(n: int) -> str:
     if n < 1000:
         return str(n)
     return f"{n / 1000:.1f}K" if n < 10_000 else f"{n // 1000}K"
+
+
+def gigabytes(n: int) -> str:
+    """Bytes as GB for a narrow column: 17733116453 -> 17.7 GB; 0 (not reported) -> ''."""
+    return f"{n / 1e9:.1f} GB" if n else ""
+
+
+SORTS = ("size", "name")
+
+
+def in_list_order(models: list[Model], by: str = "size") -> list[Model]:
+    """Grouped by type, then smallest first (``by="size"``) or by name."""
+    within = (lambda m: (m.size, m.name.lower())) if by == "size" else (lambda m: m.name.lower())
+    return sorted(models, key=lambda m: (m.type, within(m)))
 
 
 class ResolveError(LookupError):

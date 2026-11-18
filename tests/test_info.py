@@ -104,3 +104,16 @@ def test_3d_and_json(fake):
 def test_render_nests_and_flattens():
     assert render({"a": {"b": [1, 2]}, "c": [], "d": {}}) == [
         "a:", "  b: 1, 2", "c: (none)", "d:", "  (none)"]
+
+
+def test_models_grouped_by_type_then_size_or_name(fake, monkeypatch):
+    sized = [{**MODELS[0], "id": "a/Big", "display_name": "Alpha", "total_size": 4_000_000_000, "params": "2B"},
+             {**MODELS[0], "id": "b/Small", "display_name": "Beta", "total_size": 235_000_000, "params": "82M"},
+             MODELS[1]]
+    monkeypatch.setattr(fake, "models", lambda: sized)
+    monkeypatch.setenv("COLUMNS", "200")
+    out = run("models").output
+    assert out.index("Coder") < out.index("Beta") < out.index("Alpha")  # Text Generation < Text-to-Speech
+    assert "0.2 GB" in out and "4.0 GB" in out and "82M" in out
+    out = run("models", "--sort", "name").output
+    assert out.index("Alpha") < out.index("Beta")

@@ -11,7 +11,7 @@ from collections.abc import Callable
 
 from tai.client import TiinyClient
 from tai.loader import LoaderUI, ModelLoader
-from tai.models import Model, build_catalog, resolve
+from tai.models import Model, build_catalog, gigabytes, in_list_order, resolve
 
 GB = 1024 ** 3
 MUTATING = {"load", "unload", "restart", "shutdown"}  # only while the agent is idle
@@ -76,9 +76,10 @@ class DeviceCommands:
         return "\n".join(lines)
 
     def models(self, _arg: str = "") -> str:
-        rows = ["| | Model | Task | NPU |", "|---|---|---|---|"]
-        for m in sorted(self.catalog(), key=lambda m: (m.task, m.name)):
-            rows.append(f"| {'●' if m.loaded else '○'} | {m.name}{self._mark(m)} | {m.task} | {m.npu}% |")
+        rows = ["| | Model | Type | Size | NPU |", "|---|---|---|---|---|"]
+        for m in in_list_order(self.catalog()):
+            rows.append(f"| {'●' if m.loaded else '○'} | {m.name}{self._mark(m)} | {m.type} | "
+                        f"{gigabytes(m.size)} | {m.npu}% |")
         return "\n".join(rows)
 
     # -- changes ---------------------------------------------------------

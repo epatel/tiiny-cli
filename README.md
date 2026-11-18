@@ -10,11 +10,11 @@ Use every model on your [Tiiny](https://www.tiiny.ai/) from the terminal, over W
 
 ```
 $ tai models
-    Name                  Task   Type                NPU  Context  Model ID
- ○  TRELLIS.2-4B          3d     Image-to-3D         6%            microsoft/TRELLIS.2-4B
- ○  Qwen3-ASR-1.7B        asr    ASR                 7%            Qwen/Qwen3-ASR-1.7B
- ●  Qwen3-Coder-Next      chat   Text Generation     94%  131K     Qwen/Qwen3-Coder-Next
- ○  Qwen3.6-35B-A3B       chat   Image-Text-to-Text  47%  262K     Qwen/Qwen3.6-35B-A3B
+    Name                   Type                Task  Params     Size  NPU  Context  Model ID
+ ○  Qwen3-ASR-1.7B         ASR                 asr     1.7B   4.6 GB   8%           Qwen/Qwen3-ASR-1.7B
+ ○  Qwen3.8-27B            Image-Text-to-Text  chat     27B  15.9 GB  52%     262K  Qwen/Qwen3.8-27B
+ ●  Qwen3.6-35B-A3B-Turbo  Image-Text-to-Text  chat     35B  17.7 GB  46%     262K  Qwen/Qwen3.6-35B-A3B-Turbo
+ ○  TRELLIS.2-4B           Image-to-3D         3d        4B   9.8 GB   6%           microsoft/TRELLIS.2-4B
  ...
 ```
 
@@ -43,7 +43,7 @@ Then tell `tai` the address and key, in one of two ways:
   Environment variables override the `.env` files.
 
 ```sh
-tai models                    # what's installed and loaded
+tai models                    # what's installed and loaded, by type then size (--sort name)
 tai ask "hello"               # loads a chat model if needed (asks before unloading others)
 ```
 

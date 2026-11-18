@@ -88,7 +88,7 @@ def test_status_and_models():
     assert "**My Tiiny** (Tiiny z01, TiinyOS 0.1.39)" in status and "NPU: 95% used, 5% free" in status
     assert "Coder (94%) *(agent)*" in status and "CPU: 20% avg" in status and "Memory: 25% of 32 GB" in status
     table = c.run("models")
-    assert "| ● | Coder *(agent)* | chat | 94% |" in table and "| ○ | ASR | asr | 7% |" in table
+    assert "| ● | Coder *(agent)* | Text Generation |  | 94% |" in table and "| ○ | ASR | ASR |  | 7% |" in table
 
 
 def test_load_that_fits_asks_nothing():
