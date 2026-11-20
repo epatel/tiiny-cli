@@ -158,3 +158,15 @@ def test_status_without_the_hardware_route_has_no_load_line(fake):
 def test_an_unknown_model_lists_the_store(fake):
     r = run("download", "nothing-like-this")
     assert r.exit_code == 1 and "In the store:" in r.output
+
+
+def test_an_unreachable_device_is_one_line_not_a_traceback(fake, monkeypatch):
+    import httpx
+
+    def no_route():
+        raise httpx.ConnectError("[Errno 65] No route to host", request=httpx.Request("GET", "http://10.0.0.2/api"))
+
+    monkeypatch.setattr(fake, "npu", no_route)
+    r = run("status")
+    assert r.exit_code == 1 and r.exception.__class__ is SystemExit
+    assert "error: can't reach 10.0.0.2: [Errno 65] No route to host" in r.output

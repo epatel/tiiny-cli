@@ -147,9 +147,21 @@ class TaiGroup(click.Group):
         except (ConfigError, TiinyError, ResolveError) as e:
             err.print(f"[red]error:[/] {e}")
             sys.exit(1)
+        except httpx.TransportError as e:
+            err.print(f"[red]error:[/] {_unreachable(e)}")
+            sys.exit(1)
         except KeyboardInterrupt:
             err.print("[dim]interrupted[/]")
             sys.exit(130)
+
+
+def _unreachable(e: httpx.TransportError) -> str:
+    """One line for a connection that failed or broke, in place of a traceback."""
+    try:
+        host = e.request.url.host
+    except RuntimeError:  # raised outside a request
+        host = "the device"
+    return f"can't reach {host}: {e or type(e).__name__}. Is the Tiiny on, and on this network?"
 
 
 @click.group(cls=TaiGroup)

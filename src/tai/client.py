@@ -91,13 +91,19 @@ def iter_sse(lines: Iterator[str]) -> Iterator[tuple[str, str]]:
         yield event, "\n".join(data)
 
 
+CONNECT_RETRIES = 2  # extra connection attempts (at once, then 0.5 s later); a sent request is never repeated
+CONNECT_TIMEOUT = 5.0  # per attempt, so a device that is off is reported after ~15 s
+
+
 class TiinyClient:
     def __init__(self, settings: Settings, http: httpx.Client | None = None):
         self.settings = settings
         self.http = http or httpx.Client(
             base_url=settings.base_url,
             headers={"Authorization": f"Bearer {settings.token}"},
-            timeout=httpx.Timeout(30.0, read=None),
+            timeout=httpx.Timeout(30.0, read=None, connect=CONNECT_TIMEOUT),
+            # Wi-Fi to the device drops single connection attempts ("No route to host"); the next one works
+            transport=httpx.HTTPTransport(retries=CONNECT_RETRIES),
         )
 
     # -- helpers ---------------------------------------------------------
@@ -132,7 +138,7 @@ class TiinyClient:
         launch (seen while a 3D job was busy) and leave the stream open, so a
         stream with no event for LAUNCH_IDLE_TIMEOUT seconds is treated as failed."""
         path = f"/api/v1/models/{model_id}/launch/stream"
-        timeout = httpx.Timeout(30.0, read=LAUNCH_IDLE_TIMEOUT)
+        timeout = httpx.Timeout(30.0, connect=CONNECT_TIMEOUT, read=LAUNCH_IDLE_TIMEOUT)
         try:
             for event, data in self._sse("POST", path, timeout=timeout):
                 yield _launch_event(event, data)
@@ -151,7 +157,7 @@ class TiinyClient:
         ``progress`` (status, progress %, stage, downloaded/total_bytes, speed_human, error) and
         ``done``. Not in the device's OpenAPI; found in the official tiiny CLI (2026-11-16)."""
         path = f"/api/v1/models/{model_id}/download/stream"
-        timeout = httpx.Timeout(30.0, read=DOWNLOAD_IDLE_TIMEOUT)
+        timeout = httpx.Timeout(30.0, connect=CONNECT_TIMEOUT, read=DOWNLOAD_IDLE_TIMEOUT)
         try:
             for event, data in self._sse("POST", path, timeout=timeout):
                 ev = _launch_event(event, data)
@@ -235,7 +241,7 @@ class TiinyClient:
         idle = STREAM_IDLE_PROGRESS if extra.get("return_progress") else STREAM_IDLE
         try:
             for _event, data in self._sse("POST", "/v1/chat/completions", json=body,
-                                          timeout=httpx.Timeout(30.0, read=idle)):
+                                          timeout=httpx.Timeout(30.0, connect=CONNECT_TIMEOUT, read=idle)):
                 if data.strip() == "[DONE]":
                     return
                 chunk = json.loads(data)
