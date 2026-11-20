@@ -22,6 +22,7 @@ from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from tai import __version__
+from tai import usage as usage_mod
 from tai.chat import ChatSession, SessionState, user_message
 from tai.client import TiinyClient, TiinyError
 from tai.config import ConfigError, Env, Settings, data_dir, load_settings
@@ -238,12 +239,56 @@ def _model_row(m: Model, is_default: bool) -> tuple[str, ...]:
 def status(app: App):
     """Show NPU usage and loaded models."""
     npu = app.client.npu()
+    hardware = _hardware(app.client)
     err.print(f"[dim]{app.client.settings.where}[/]")
     out.print(f"NPU: {npu.get('npu_used')}/{npu.get('npu_total')} used, {npu.get('npu_available')} free")
+    for line in _load_lines(hardware):
+        out.print(line)
     for m in npu.get("models", []):
         out.print(f"  [green]●[/] {m['model_id']}  {m['npu_usage']}%  [dim]{m['status']}[/]")
     for d in app.client.downloading():
         out.print(f"  [yellow]↓[/] {d['id']}  {float(d.get('progress') or 0):.0f}%  [dim]downloading[/]")
+
+
+@cli.command()
+@click.option("-w", "--weeks-ago", type=click.IntRange(min=0), default=0, show_default=True,
+              help="An earlier week: 1 is last week.")
+@click.option("--json", "as_json", is_flag=True)
+@pass_app
+def usage(app: App, weeks_ago, as_json):
+    """Tokens and requests per day and model for a week (Monday to Sunday).
+
+    The device counts everything it serves, not only tai's requests."""
+    start = usage_mod.monday(usage_mod.today(), weeks_ago)
+    week = app.client.week_usage(start.isoformat())
+    if as_json:
+        out.print_json(json.dumps(week))
+        return
+    found = usage_mod.rows(week)
+    if not found:
+        out.print(f"No usage in the week of {start.isoformat()}.")
+        return
+    out.print(usage_mod.table(found, out.width))
+    out.print(f"[dim]Week of {start.isoformat()}, in tokens[/]")
+
+
+def _hardware(client: TiinyClient) -> dict:
+    """The device's hardware readings; {} from a device without the route."""
+    try:
+        return client.npu_hardware()
+    except TiinyError:
+        return {}
+
+
+def _load_lines(hardware: dict) -> list[str]:
+    """'Load: NPU 100%, SoC 83%, RAM 55%, 54°C, 31 W' (the TiinyOS Dashboard's gauges, then the NPU
+    chip's temperature and power), leaving out what the device doesn't report; [] for nothing."""
+    chip = (hardware.get("devices") or [{}])[0]
+    readings = [("NPU ", chip.get("util_percent"), "%"), ("SoC ", hardware.get("cpu", {}).get("total_percent"), "%"),
+                ("RAM ", hardware.get("memory", {}).get("usage_percent"), "%"),
+                ("", chip.get("temp_c"), "°C"), ("", chip.get("power_w"), " W")]
+    shown = [f"{label}{value:.0f}{unit}" for label, value, unit in readings if value is not None]
+    return [f"Load: {', '.join(shown)}"] if shown else []
 
 
 @cli.command()

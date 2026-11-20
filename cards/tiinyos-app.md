@@ -32,11 +32,12 @@ Models:
 - `/api/v1/models/import`, `import/inspect`, `import/toolkits`: import from Hugging Face. Not tried.
 
 System:
-- `GET /api/v1/npu/status` → `devices: [{util_percent, mem_used_mb, mem_total_mb, temp_c, power_w, model, sn}]`, `cpu`, `memory`, `npu {status, status_message}`: NPU temperature and power, which `/api/v1/models/npu/status` doesn't have.
+- `GET /api/v1/npu/status` → `devices: [{util_percent, mem_used_mb, mem_total_mb, temp_c, power_w, model, sn}]`, `cpu`, `memory`, `npu {status, status_message}`. `temp_c` and `power_w` are **null on our device**, idle and at 100% load (2026-11-20), and no other route has them; `tai top` (NPU panel title) and `tai status` show them only when they are numbers. `util_percent` and `mem_used_mb`/`mem_total_mb` here are the chip's real figures (0% idle, 100% while generating; 39378 / 49024 MB on the 48 GB chip with 92% of the budget loaded) and what the Dashboard shows. `/api/v1/sys/status`'s `npus[0]` is not: it read 20–90% load on an idle device and 4906 / 11946, later 1975 / 9598 MB. `tai top` takes NPU load and memory from this route (falling back to `/sys/status`), and `tai status` prints `Load: NPU …%, SoC …%, RAM …%` from it.
 - `GET /api/v1/sys/storage` → `total_bytes, used_bytes, remaining_bytes, details: [{name, size_bytes}]`; `GET /api/v1/sys/storage/agent` → `apps: [{name, size_bytes}]`.
 - `GET /api/v1/sys/device_info` → model name, `tiiny_os`, cpu, gpu, dnpu, ram, storage, version.
 - `GET|POST /api/v1/sys/ac_power/` → `{status, ac_power}`. `POST /api/v1/sys/shutdown/`, `/api/v1/sys/wifi/*`: not tried.
-- `GET /api/v1/statistics/week_usage`, `app_week_usage`: 422 without query parameters (not worked out).
+- `GET /api/v1/statistics/week_usage?start_date=YYYY-MM-DD` (required; the app sends the week's Monday) → seven days, each `{model_id: {prompt_tokens, completion_tokens, total_tokens, request_count}}`. `GET /api/v1/statistics/app_week_usage?start_date=…` → `{default: {total_tokens, models: {model_id: tokens}}}`. This is the app's Dashboard "Weekly Usage" / "Agent Usage" (30.1M tokens for 2026-11-16..22, matching the app). `tai usage` shows `week_usage` (`src/tai/usage.py`); `app_week_usage` is not used.
+- The Dashboard's three gauges come from `/api/v1/npu/status`: NPU = `devices[0].util_percent`, SoC = `cpu.total_percent`, RAM = `memory.usage_percent`. It shows no temperature or power.
 
 Services (apps running on the device, separate from models):
 - `GET /api/services` → `[{id, name, description, ports, cloud_version, status}]` (2 on ours); `GET /api/services/updates/check` → `[{service_id, current_version, latest_version, update_available}]`.

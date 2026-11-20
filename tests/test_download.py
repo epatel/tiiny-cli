@@ -22,6 +22,7 @@ class FakeClient:
         self.installed = list(INSTALLED)
         self.log: list[tuple[str, str]] = []
         self.disk_ok = True
+        self.chip = {"util_percent": 100.0, "temp_c": None, "power_w": None}
         self.settings = Settings("dev", "tok")
 
     @property
@@ -43,6 +44,11 @@ class FakeClient:
     def npu(self):
         return {"npu_used": 94, "npu_total": 100, "npu_available": 6,
                 "models": [{"model_id": "q/Coder", "npu_usage": 94, "status": "running"}]}
+
+    def npu_hardware(self):
+        if self.chip is None:
+            raise cli_mod.TiinyError("404")
+        return {"devices": [self.chip], "cpu": {"total_percent": 82.9}, "memory": {"usage_percent": 55.3}}
 
     def update_info(self, model_id):
         row = next(d for d in self.installed if d["id"] == model_id)
@@ -133,6 +139,20 @@ def test_rm_asks_before_deleting_and_refuses_a_loaded_model(fake):
 def test_status_lists_a_download_in_progress(fake):
     r = run("status")
     assert "● q/Coder  94%" in r.output and "↓ hexgrad/Kokoro-82M  37%  downloading" in r.output
+    assert "NPU: 94/100 used, 6 free\nLoad: NPU 100%, SoC 83%, RAM 55%\n" in r.output  # no temperature or power
+
+
+def test_status_shows_npu_temperature_and_power_when_reported(fake):
+    fake.chip = {"util_percent": 0.0, "temp_c": 54.4, "power_w": 31.2}
+    assert "Load: NPU 0%, SoC 83%, RAM 55%, 54°C, 31 W\n" in run("status").output
+    fake.chip = {"temp_c": 54.4, "power_w": None}
+    assert "Load: SoC 83%, RAM 55%, 54°C\n" in run("status").output
+
+
+def test_status_without_the_hardware_route_has_no_load_line(fake):
+    fake.chip = None
+    r = run("status")
+    assert r.exit_code == 0 and "NPU: 94/100" in r.output and "Load" not in r.output
 
 
 def test_an_unknown_model_lists_the_store(fake):

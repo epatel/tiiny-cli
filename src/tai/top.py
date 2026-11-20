@@ -35,10 +35,11 @@ class Glyphs:
     vline: str
     tick: str  # the axis at a 100/50/0 label
     dot: str  # header separator
+    degrees: str = "°C"
 
 
 UNICODE = Glyphs("█", "░", " ▏▎▍▌▋▊▉", " ▁▂▃▄▅▆▇", "", "─", "│", "┤", "·")
-ASCII = Glyphs("#", ".", " ", " .:", "[]", "-", "|", "|", "-")
+ASCII = Glyphs("#", ".", " ", " .:", "[]", "-", "|", "|", "-", " C")
 
 
 @dataclass(frozen=True)
@@ -50,10 +51,12 @@ class Box:
 
 @dataclass
 class Readings:
-    """The raw answers of one poll: /sys/status, /models/npu/status and /models/running."""
+    """The raw answers of one poll: /sys/status, /models/npu/status, /models/running and the
+    NPU chip's entry in /npu/status ({} when the device doesn't have that route)."""
     status: dict
     npu: dict
     running: dict
+    chip: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -81,6 +84,8 @@ class Sample:
     disk_total: int
     budget: int  # % of the NPU budget held by loaded models
     models: list[ModelRow] = field(default_factory=list)
+    temp: float | None = None  # NPU chip, °C; None when the device doesn't report it
+    power: float | None = None  # NPU chip, W
 
     @property
     def npu_mem(self) -> float:
@@ -94,7 +99,12 @@ class Sample:
 def parse(r: Readings, now: float) -> Sample:
     """A Sample from one poll's readings."""
     status, npu, running = r.status, r.npu, r.running
-    chip = (status.get("npus") or [{}])[0]
+    # the chip's own figures (what the TiinyOS Dashboard shows) win over /sys/status, whose NPU load
+    # reads 20-90% on an idle device and whose NPU memory is a quarter of the chip's (2026-11-20)
+    old = (status.get("npus") or [{}])[0]
+    chip = {"utilization_percent": r.chip.get("util_percent"), "memory_used_mb": r.chip.get("mem_used_mb"),
+            "memory_total_mb": r.chip.get("mem_total_mb")}
+    chip = {k: old.get(k, 0) if v is None else v for k, v in chip.items()}
     mem, disk, cpu = status.get("memory", {}), status.get("disk", {}), status.get("cpu", {})
     cores = list(cpu.get("per_core_percent", []))
     return Sample(
@@ -103,10 +113,11 @@ def parse(r: Readings, now: float) -> Sample:
         when=now, cpu=sum(cores) / len(cores) if cores else cpu.get("total_percent", 0.0), cores=cores,
         mem=mem.get("usage_percent", 0.0), mem_used=mem.get("used_bytes", 0), mem_total=mem.get("total_bytes", 0),
         gpu=status.get("gpu", {}).get("utilization_percent", 0.0),
-        npu=chip.get("utilization_percent", 0.0), npu_mem_used=chip.get("memory_used_mb", 0),
-        npu_mem_total=chip.get("memory_total_mb", 0),
+        npu=chip["utilization_percent"], npu_mem_used=int(chip["memory_used_mb"]),
+        npu_mem_total=int(chip["memory_total_mb"]),
         disk_used=disk.get("used_bytes", 0), disk_total=disk.get("total_bytes", 0),
-        budget=npu.get("npu_used", 0), models=_models(running, now))
+        budget=npu.get("npu_used", 0), models=_models(running, now),
+        temp=r.chip.get("temp_c"), power=r.chip.get("power_w"))
 
 
 def _models(running: dict, now: float) -> list[ModelRow]:
@@ -188,9 +199,15 @@ def render(view: View, box: Box) -> list[str]:
     g = view.glyphs
     below = _meters(last, box, g) + _model_lines(last, box, g) + ([f"! {view.error}"] if view.error else [])
     panel = Box(box.width, max(3, (box.height - len(below) - 3) // 2))
-    lines += _panel(f"NPU {last.npu:5.1f}%", [s.npu for s in view.samples], panel, g)
+    lines += _panel(f"NPU {last.npu:5.1f}%{_heat(last, g)}", [s.npu for s in view.samples], panel, g)
     lines += _panel(f"CPU {last.cpu:5.1f}%", [s.cpu for s in view.samples], panel, g)
     return _fit(lines + below, box)
+
+
+def _heat(s: Sample, g: Glyphs) -> str:
+    """The NPU's temperature and power for its panel title: '  54°C  31 W'; '' for what isn't reported."""
+    parts = [f"{s.temp:.0f}{g.degrees}" if s.temp is not None else "", f"{s.power:.0f} W" if s.power is not None else ""]
+    return "".join(f"  {p}" for p in parts if p)
 
 
 def _fit(lines: list[str], box: Box) -> list[str]:
@@ -269,10 +286,17 @@ class Poller:
     def poll_once(self) -> None:
         try:
             c = self.client
-            self.samples.append(parse(Readings(c.sys_status(), c.npu(), c.running()), time.time()))
+            self.samples.append(parse(Readings(c.sys_status(), c.npu(), c.running(), self._chip()), time.time()))
             self.error = ""
         except Exception as e:  # noqa: BLE001 — show any failure and keep polling
             self.error = f"device unreachable: {e}"[:200]
+
+    def _chip(self) -> dict:
+        """Temperature and power are extras: a device without the route still gets its sample."""
+        try:
+            return self.client.npu_chip()
+        except Exception:  # noqa: BLE001
+            return {}
 
     def _loop(self) -> None:
         while not self._stop.is_set():

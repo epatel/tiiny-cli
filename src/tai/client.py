@@ -194,6 +194,21 @@ class TiinyClient:
         """CPU, memory, NPU and disk utilisation."""
         return self._json("GET", "/api/v1/sys/status")
 
+    def npu_chip(self) -> dict:
+        """The NPU chip's own readings: ``temp_c``, ``power_w`` (both null on our device, 2026-11-20),
+        ``util_percent``, ``mem_used_mb``/``mem_total_mb``, ``model``. {} if the device lists no chip."""
+        return (self.npu_hardware().get("devices") or [{}])[0]
+
+    def npu_hardware(self) -> dict:
+        """What the TiinyOS Dashboard's gauges read: ``devices[0].util_percent`` (NPU), ``cpu.total_percent``
+        (SoC), ``memory.usage_percent`` (RAM), plus ``npu {status, status_message}`` and ``occupants``."""
+        return self._json("GET", "/api/v1/npu/status")
+
+    def week_usage(self, start_date: str) -> dict:
+        """Tokens and requests per day and model for the seven days from ``start_date`` (YYYY-MM-DD):
+        ``{day: {model_id: {prompt_tokens, completion_tokens, total_tokens, request_count}}}``."""
+        return self._json("GET", "/api/v1/statistics/week_usage", params={"start_date": start_date})
+
     def device_info(self) -> dict:
         """Model name, OS version, hardware specs (slow: ~1-2 s)."""
         return self._json("GET", "/api/v1/sys/device_info")

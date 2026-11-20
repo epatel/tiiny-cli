@@ -88,7 +88,8 @@ tai agent "fix the failing test"   # start with a task; -c continues here
 tai mcp                     # MCP servers the agent uses (.mcp.json, ~/.config/tai/mcp.json)
 tai skills                  # skills it can use (.claude/skills, ~/.claude/skills, ~/.config/tai/skills)
 
-tai status                  # NPU usage
+tai status                  # NPU usage, downloads in progress
+tai usage                   # tokens and requests per day and model this week (-w 1: last week)
 tai top                     # live full-screen view: NPU/CPU graphs, memory, models (q quits; --ascii for plain ASCII)
 tai load qwen3.6            # pre-load; tai unload --all
 tai download                # store models not on the device; tai download kokoro

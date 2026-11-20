@@ -24,6 +24,24 @@ def test_parse_reads_every_field():
     assert s.models[0].name == "Qwen3.8-27B" and s.models[0].active == 1 and s.models[0].idle == 30
 
 
+def test_npu_temperature_and_power_show_only_when_the_device_reports_them():
+    hot = parse(Readings(STATUS, NPU, RUNNING, {"temp_c": 54.4, "power_w": 31.2}), 1030.0)
+    assert (hot.temp, hot.power) == (54.4, 31.2)
+    assert "NPU  99.2%  54°C  31 W" in "\n".join(render(View([hot], "x"), Box(80, 30)))
+    lines = render(View([hot], "x", glyphs=ASCII), Box(80, 30))
+    assert "NPU  99.2%  54 C  31 W" in "\n".join(lines) and all(ln.isascii() for ln in lines)
+    silent = parse(Readings(STATUS, NPU, RUNNING, {"temp_c": None, "power_w": None}), 1030.0)  # our device
+    text = "\n".join(render(View([silent], "x"), Box(80, 30)))
+    assert "NPU  99.2% ─" in text and "°C" not in text and " W" not in text
+
+
+def test_npu_load_and_memory_come_from_the_chip_when_it_reports_them():
+    s = parse(Readings(STATUS, NPU, RUNNING, {"util_percent": 0.0, "mem_used_mb": 39378.0, "mem_total_mb": 49024.0}), 1030.0)
+    assert (s.npu, s.npu_mem_used, s.npu_mem_total) == (0.0, 39378, 49024)  # not /sys/status's 99.19, 7835, 12372
+    partial = parse(Readings(STATUS, NPU, RUNNING, {"util_percent": 100.0}), 1030.0)
+    assert (partial.npu, partial.npu_mem_used) == (100.0, 7835)
+
+
 def test_parse_tolerates_missing_fields():
     s = parse(Readings({}, {}, {}), 0)
     assert s.npu == 0 and s.npu_mem == 0 and s.models == []
@@ -68,7 +86,7 @@ class FakeClient:
         self.fail = fail
 
     def sys_status(self):
-        if self.fail:
+        if self.fail is True:
             raise OSError("no route")
         return STATUS
 
@@ -78,6 +96,11 @@ class FakeClient:
     def running(self):
         return RUNNING
 
+    def npu_chip(self):
+        if self.fail == "chip":
+            raise OSError("404")
+        return {"temp_c": 61.0, "power_w": None}
+
 
 def test_poller_keeps_history_and_reports_errors():
     p = Poller(FakeClient(), 1.0)
@@ -86,6 +109,13 @@ def test_poller_keeps_history_and_reports_errors():
     p.poll_once()
     view = p.view("x")
     assert len(view.samples) == 1 and "no route" in view.error
+    assert view.samples[0].temp == 61.0 and view.samples[0].power is None
+
+
+def test_poller_samples_without_the_chip_route():
+    p = Poller(FakeClient(fail="chip"), 1.0)
+    p.poll_once()
+    assert len(p.samples) == 1 and p.samples[0].temp is None and p.error == ""
 
 
 def test_keys():
