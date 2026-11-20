@@ -8,6 +8,7 @@ room (ties: fewer models, then least recently used), never one with active reque
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from itertools import combinations
 
@@ -45,6 +46,8 @@ class Model:
     context: int = 0  # context_window in tokens (chat and embedding models); 0 if not reported
     size: int = 0  # total_size: bytes on disk; 0 if not reported
     params: str = ""  # e.g. "35B", as the catalog gives it
+    version: str = ""  # version_label of the installed copy, e.g. "20261013"
+    update: bool = False  # need_update: the store has a newer version
 
     @property
     def task(self) -> str:
@@ -86,11 +89,18 @@ class Model:
             supported=list(d.get("supported") or []),
             context=_count(d, "context_window"),
             size=_count(d, "total_size"),
-            params=str(d.get("params") or ""),
+            params=_text(d, "params"),
+            version=_text(d, "version_label"),
+            update=bool(d.get("need_update")),
         )
 
 
-def _count(d: dict, key: str) -> int:
+def _text(d: Mapping, key: str) -> str:
+    """A catalog field as text; '' when missing or null."""
+    return str(d.get(key) or "")
+
+
+def _count(d: Mapping, key: str) -> int:
     """A numeric catalog field; 0 when missing or null."""
     return int(d.get(key) or 0)
 
@@ -102,8 +112,8 @@ def short_tokens(n: int) -> str:
     return f"{n / 1000:.1f}K" if n < 10_000 else f"{n // 1000}K"
 
 
-def gigabytes(n: int) -> str:
-    """Bytes as GB for a narrow column: 17733116453 -> 17.7 GB; 0 (not reported) -> ''."""
+def gigabytes(n: int | None) -> str:
+    """Bytes as GB for a narrow column: 17733116453 -> 17.7 GB; 0 or None (not reported) -> ''."""
     return f"{n / 1e9:.1f} GB" if n else ""
 
 

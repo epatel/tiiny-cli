@@ -91,6 +91,13 @@ def test_status_and_models():
     assert "| ● | Coder *(agent)* | Text Generation |  | 94% |" in table and "| ○ | ASR | ASR |  | 7% |" in table
 
 
+def test_models_mark_an_available_update():
+    c, _, _ = cmds(models=[dict(EMBED), dict(ASR, need_update=True)])
+    table = c.run("models")
+    assert "| ○ | ASR ↑ | ASR |" in table and "Embed ↑" not in table
+    assert table.endswith("↑ update available")
+
+
 def test_load_that_fits_asks_nothing():
     c, client, ui = cmds(models=[dict(EMBED), dict(ASR)])
     assert c.run("load asr") == "Loaded **ASR**."

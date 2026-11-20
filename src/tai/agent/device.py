@@ -78,8 +78,10 @@ class DeviceCommands:
     def models(self, _arg: str = "") -> str:
         rows = ["| | Model | Type | Size | NPU |", "|---|---|---|---|---|"]
         for m in in_list_order(self.catalog()):
-            rows.append(f"| {'●' if m.loaded else '○'} | {m.name}{self._mark(m)} | {m.type} | "
+            rows.append(f"| {'●' if m.loaded else '○'} | {m.name}{self._mark(m)}{' ↑' if m.update else ''} | {m.type} | "
                         f"{gigabytes(m.size)} | {m.npu}% |")
+        if "↑" in "".join(rows):
+            rows.append("\n↑ update available")
         return "\n".join(rows)
 
     # -- changes ---------------------------------------------------------

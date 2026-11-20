@@ -214,22 +214,23 @@ def models_cmd(app: App, as_json, sort_by):
         out.print_json(json.dumps([m.__dict__ | {"task": m.task} for m in models]))
         return
     t = Table(box=None, header_style="bold")
-    for col in ("", "Name", "Type", "Task", "Params", "Size", "NPU", "Context"):
+    for col in ("", "Name", "Type", "Task", "Params", "Size", "NPU", "Context", "Version"):
         t.add_column(col, no_wrap=True, justify="right" if col in ("Params", "Size", "NPU", "Context") else "left")
     t.add_column("Model ID", overflow="fold")
     for m in in_list_order(models, sort_by):
         t.add_row(*_model_row(m, is_default=defaults.get(f"default.{m.task}") == m.id))
     out.print(t)
     used = sum(m.npu for m in models if m.loaded)
-    out.print(f"[dim]● loaded  ○ not loaded  * your default — NPU in use: {used}%[/]")
+    out.print(f"[dim]● loaded  ○ not loaded  * your default  ↑ update available — NPU in use: {used}%[/]")
 
 
 def _model_row(m: Model, is_default: bool) -> tuple[str, ...]:
     mark = "[green]●[/]" if m.loaded else ("[yellow]◐[/]" if m.status not in ("downloaded", "") else "[dim]○[/]")
     context = short_tokens(m.context) if m.context else ""
     star = " *" if is_default else ""
+    version = m.version + (" [yellow]↑[/]" if m.update else "")
     return (mark, m.name + star, m.type, m.task, m.params, gigabytes(m.size), f"{m.npu}%", context,
-            f"[dim]{m.id}[/]")
+            version, f"[dim]{m.id}[/]")
 
 
 @cli.command()
@@ -241,6 +242,8 @@ def status(app: App):
     out.print(f"NPU: {npu.get('npu_used')}/{npu.get('npu_total')} used, {npu.get('npu_available')} free")
     for m in npu.get("models", []):
         out.print(f"  [green]●[/] {m['model_id']}  {m['npu_usage']}%  [dim]{m['status']}[/]")
+    for d in app.client.downloading():
+        out.print(f"  [yellow]↓[/] {d['id']}  {float(d.get('progress') or 0):.0f}%  [dim]downloading[/]")
 
 
 @cli.command()
@@ -337,14 +340,88 @@ def download(app: App, model):
     entry = match_store(store, model)
     name = entry.get("name") or entry["fullname"]
     if entry["fullname"] in have:
-        out.print(f"{name} is already on the device.")
+        hint = f" An update is available: tai update {name}" if entry.get("need_update") else ""
+        out.print(f"{name} is already on the device.{hint}")
         return
-    with Progress(TextColumn(f"[bold]Downloading {name}"), BarColumn(), TextColumn("{task.percentage:>3.0f}%"),
+    _watch_download(app, name, entry["fullname"])
+    out.print(f"[green]Downloaded {name}[/] ({entry['fullname']})")
+
+
+def _watch_download(app: App, name: str, model_id: str, verb: str = "Downloading") -> None:
+    """Follow the device's download of ``model_id`` with a progress bar until it is done."""
+    with Progress(TextColumn(f"[bold]{verb} {name}"), BarColumn(), TextColumn("{task.percentage:>3.0f}%"),
                   TextColumn("[dim]{task.fields[msg]}"), TimeElapsedColumn(), console=err, transient=True) as prog:
         tid = prog.add_task("download", total=100, msg="")
-        for ev in app.client.download(entry["fullname"]):
+        for ev in app.client.download(model_id):
             prog.update(tid, completed=float(ev.get("progress") or 0), msg=_download_note(ev))
-    out.print(f"[green]Downloaded {name}[/] ({entry['fullname']})")
+
+
+@cli.command()
+@click.argument("model", required=False)
+@pass_app
+def update(app: App, model):
+    """Update MODEL to the store's version (no MODEL: list the models that have an update).
+
+    The device deletes its copy and downloads the new one, so the model is gone until the
+    download finishes. Ctrl+C stops watching, not the download; `tai status` shows it."""
+    models = app.catalog()
+    if not model:
+        _updates_table(app, [m for m in in_list_order(models) if m.update])
+        return
+    m = resolve(models, model)
+    info = app.client.update_info(m.id)
+    if not info.get("need_update"):
+        out.print(f"{m.name} is up to date ({info.get('local_version') or m.version}).")
+        return
+    _must_be_unloaded(m)
+    needed = gigabytes(info.get("required_bytes"))
+    if info.get("disk_ok") is False:
+        raise TiinyError(f"Not enough disk space on the device: {m.name} needs {needed}, "
+                         f"{gigabytes(info.get('available_bytes'))} free.")
+    err.print(f"{m.name}: {info.get('local_version')} → {info.get('cloud_version')}"
+              f" ({needed} needed). The device deletes its copy first.")
+    if not _confirmed(app, "Update?", default=True):
+        return
+    app.client.start_update(m.id)
+    _watch_download(app, m.name, m.id, verb="Updating")
+    out.print(f"[green]Updated {m.name}[/] to {info.get('cloud_version')}")
+
+
+def _confirmed(app: App, question: str, default: bool) -> bool:
+    return app.yes or click.confirm(question, default=default, err=True)
+
+
+def _must_be_unloaded(m: Model) -> None:
+    """Deleting or replacing a model's files under a running container isn't something to try."""
+    if m.loaded:
+        raise TiinyError(f"{m.name} is loaded. Unload it first: tai unload {m.name}")
+
+
+def _updates_table(app: App, models: list[Model]) -> None:
+    if not models:
+        out.print("Every model is up to date.")
+        return
+    t = Table(box=None, header_style="bold")
+    for col in ("Name", "Installed", "Available", "Model ID"):
+        t.add_column(col, no_wrap=True)
+    for m in models:
+        t.add_row(m.name, m.version, str(app.client.update_info(m.id).get("cloud_version") or "?"), f"[dim]{m.id}[/]")
+    out.print(t)
+    out.print("[dim]Update one with: tai update MODEL[/]")
+
+
+@cli.command()
+@click.argument("model")
+@pass_app
+def rm(app: App, model):
+    """Delete MODEL from the device's disk (it can be downloaded again with `tai download`)."""
+    m = resolve(app.catalog(), model)
+    _must_be_unloaded(m)
+    size = f", {gigabytes(m.size)}" if m.size else ""
+    if not _confirmed(app, f"Delete {m.name} ({m.id}{size}) from the device?", default=False):
+        return
+    app.client.delete(m.id)
+    out.print(f"Deleted {m.name} ({m.id})")
 
 
 def _download_note(ev: dict) -> str:

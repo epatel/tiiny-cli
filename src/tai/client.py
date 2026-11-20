@@ -162,6 +162,26 @@ class TiinyClient:
             raise TiinyError(f"No progress from the device for {DOWNLOAD_IDLE_TIMEOUT:.0f}s while downloading "
                              f"{model_id}. Check `tai models`; the device may still be downloading.") from e
 
+    def downloading(self) -> list[dict]:
+        """Catalog rows of models the device is downloading right now (``progress`` in %)."""
+        rows = self._json("GET", "/api/v1/models/", params={"including_downloading": "true"})["data"]
+        return [d for d in rows if d.get("status") == "downloading"]
+
+    def update_info(self, model_id: str) -> dict:
+        """``need_update``, ``local_version``, ``cloud_version``, ``update_desc``, ``disk_ok``,
+        ``required_bytes``/``available_bytes`` for an installed model (from the TiinyOS app, 2026-11-20)."""
+        return self._json("GET", f"/api/v1/models/{model_id}/update")
+
+    def start_update(self, model_id: str) -> dict:
+        """Delete the installed copy and start downloading the store's version; follow it with
+        ``download``. A 200 with nothing to update just says so."""
+        return self._json("POST", f"/api/v1/models/{model_id}/update", timeout=60.0)
+
+    def delete(self, model_id: str) -> dict:
+        """Delete a downloaded model from the device's disk. The device answers 200 "already
+        deleted" for an id it doesn't have."""
+        return self._json("DELETE", f"/api/v1/models/{model_id}", json={"model_id": model_id}, timeout=300.0)
+
     def stop(self, model_id: str) -> dict:
         return self._json("POST", f"/api/v1/models/{model_id}/stop")
 

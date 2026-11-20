@@ -117,3 +117,16 @@ def test_models_grouped_by_type_then_size_or_name(fake, monkeypatch):
     assert "0.2 GB" in out and "4.0 GB" in out and "82M" in out
     out = run("models", "--sort", "name").output
     assert out.index("Alpha") < out.index("Beta")
+
+
+def test_models_show_the_version_and_mark_updates(fake, monkeypatch):
+    rows = [{**MODELS[0], "version_label": "20261013", "need_update": True},
+            {**MODELS[1], "version_label": "20261102", "need_update": False}]
+    monkeypatch.setattr(fake, "models", lambda: rows)
+    monkeypatch.setenv("COLUMNS", "200")
+    lines = run("models").output.splitlines()
+    assert "20261013 ↑" in next(l for l in lines if "k2/Voice" in l)
+    coder = next(l for l in lines if "q/Coder" in l)
+    assert "20261102" in coder and "↑" not in coder
+    data = json.loads(run("models", "--json").stdout)
+    assert {m["id"]: m["update"] for m in data} == {"k2/Voice": True, "q/Coder": False}

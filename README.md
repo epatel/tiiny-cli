@@ -92,6 +92,8 @@ tai status                  # NPU usage
 tai top                     # live full-screen view: NPU/CPU graphs, memory, models (q quits; --ascii for plain ASCII)
 tai load qwen3.6            # pre-load; tai unload --all
 tai download                # store models not on the device; tai download kokoro
+tai update                  # models with a newer version in the store; tai update kokoro
+tai rm kokoro               # delete a model from the device (asks first)
 tai info omni               # what a model is (incl. context window) + the options it reports (--json, --no-load)
 tai config set default.chat coder              # preferred model per task
 tai config set think off                       # default reasoning mode
