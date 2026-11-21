@@ -27,6 +27,7 @@ from tai.chat import ChatSession, SessionState, user_message
 from tai.client import TiinyClient, TiinyError
 from tai.config import ConfigError, Env, Settings, data_dir, load_settings
 from tai.db import Store
+from tai.hfimport import HfModel, ImportChoice, ImportOptions, Inspection, event_note
 from tai.info import catalog_row, render, reported, reports_options
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
@@ -481,6 +482,69 @@ def rm(app: App, model):
     out.print(f"Deleted {m.name} ({m.id})")
 
 
+@cli.command("import")
+@click.argument("model", required=False)
+@click.option("--name", help="Its name on the device (default: the repository's name).")
+@click.option("--description", default="", help="A description shown with the model.")
+@click.option("--reasoning/--no-reasoning", default=False, show_default=True,
+              help="Whether it is a reasoning (thinking) model.")
+@click.option("--check", is_flag=True, help="Only ask the device whether it can import MODEL.")
+@bundle("opts", ImportOptions, "name", "description", "reasoning")
+@pass_app
+def import_cmd(app: App, model, check, opts: ImportOptions):
+    """Import MODEL from Hugging Face to the device (org/name or its URL; no MODEL: list the converters).
+
+    The device downloads and converts it, which can take a long time. It needs .safetensors files
+    and a public license that allows download. Ctrl+C stops watching; `tai status` shows it."""
+    if not model:
+        _toolkits_table(app.client.import_toolkits())
+        return
+    try:
+        hf = HfModel.parse(model)
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="MODEL") from None
+    choice = ImportChoice(hf, opts)
+    if any(m.name == choice.name for m in app.catalog()):
+        raise TiinyError(f"{choice.name} is already on the device: pick another --name.")
+    inspection = Inspection.of(app.client.import_inspect(hf.url))
+    _print_inspection(choice, inspection)
+    _must_be_importable(inspection)
+    if check or not _confirmed(app, f"Import {choice.name}?", default=True):
+        return
+    _watch_import(app, choice, inspection)
+    out.print(f"[green]Imported {choice.name}[/] from {hf.url}")
+
+
+def _print_inspection(choice: ImportChoice, inspection: Inspection) -> None:
+    m = inspection.model
+    facts = [inspection.task, m.get("params"), gigabytes(inspection.size), inspection.support.get("toolkit_id")]
+    err.print(f"{choice.model.url}: {', '.join(str(f) for f in facts if f) or 'no details'}")
+
+
+def _must_be_importable(inspection: Inspection) -> None:
+    base = inspection.needs_base_model
+    if base is not None:
+        which = base.get("display_name") or base.get("model_id") or "a base model"
+        raise TiinyError(f"Importing this needs {which} on the device first: tai download {base.get('model_id', '')}".rstrip())
+    if not inspection.supported:
+        raise TiinyError(f"The device can't import this model: {inspection.why_not()}")
+
+
+def _watch_import(app: App, choice: ImportChoice, inspection: Inspection) -> None:
+    with Progress(TextColumn(f"[bold]Importing {choice.name}"), BarColumn(), TextColumn("{task.percentage:>3.0f}%"),
+                  TextColumn("[dim]{task.fields[msg]}"), TimeElapsedColumn(), console=err, transient=True) as prog:
+        tid = prog.add_task("import", total=100, msg="")
+        for ev in app.client.import_model(inspection.request(choice)):
+            prog.update(tid, completed=float(ev.get("progress") or 0), msg=event_note(ev))
+
+
+def _toolkits_table(toolkits: list[dict]) -> None:
+    usable = [t for t in toolkits if (t.get("compatibility") or {}).get("compatible") is not False]
+    for t in usable:
+        out.print(f"{t.get('display_name') or t.get('id')}  [dim]{t.get('id', '')}[/]")
+    out.print(f"[dim]{len(usable)} converters. Import a model with: tai import org/name[/]")
+
+
 def _download_note(ev: dict) -> str:
     """e.g. 'downloading 37/235 MB 12 MB/s'."""
     parts = [ev.get("stage") or ev.get("status") or "", _megabytes(ev)]
@@ -902,18 +966,28 @@ def _open(path: Path) -> None:
         subprocess.run([opener, str(path)], check=False)
 
 
+MAX_IMAGES = 10  # the device's limit for ``images``
+
+
 @cli.command()
 @generator("image.png", "image")
 @click.option("--size", default="1024x1024", show_default=True, help="WIDTHxHEIGHT")
 @click.option("--steps", type=click.IntRange(1), help="Denoising steps (default: the model's own).")
 @click.option("--guidance", type=float, help="Guidance scale (default: the model's own).")
 @click.option("--negative", help="What the image should not contain.")
+@click.option("-i", "--image", "images", multiple=True, type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help=f"A picture to start from (edit it as PROMPT says). Repeat for up to {MAX_IMAGES}.")
 @extra_option("in the image request")
-@bundle("opts", ImageOptions, "size", "seed", "steps", "guidance", "negative", "extra")
+@bundle("opts", ImageOptions, "size", "seed", "steps", "guidance", "negative", "extra", "images")
 @pass_app
 def image(app: App, req: Prompt, saved: SavedFile, opts: ImageOptions):
-    """Generate an image from PROMPT."""
+    """Generate an image from PROMPT, or edit pictures given with -i."""
+    if len(opts.images) > MAX_IMAGES:
+        raise click.BadParameter(f"at most {MAX_IMAGES} pictures", param_hint="--image")
     m = app.model_for("image", req.model)
+    if opts.images and not m.edits:
+        err.print(f"[yellow]{m.name} doesn't say it takes pictures in; it may ignore them.[/] "
+                  "Pick an editing model with -m.")
     app.ensure_loaded(m)
     seed = _seed(opts.seed)
     with err.status(f"Generating with {m.name}…"):

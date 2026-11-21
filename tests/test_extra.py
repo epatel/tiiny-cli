@@ -19,6 +19,7 @@ MODELS = [
      "status": "downloaded", "supported": ["Voice Clone"]},
     {"id": "z/Image", "display_name": "Image", "type": "Text-to-Image", "npu_usage": 20,
      "status": "running"},
+    {"id": "q/Edit", "display_name": "Edit", "type": "Image-to-Image", "npu_usage": 30, "status": "running"},
     {"id": "q/Ears", "display_name": "Ears", "type": "ASR", "npu_usage": 5, "status": "running"},
     {"id": "q/Embed", "display_name": "Embed", "type": "Text Embedding", "npu_usage": 1,
      "status": "running"},
@@ -129,3 +130,21 @@ def test_tts_clone_sends_the_recording_and_picks_a_model_that_clones(fake, monke
     assert r.exit_code == 0, r.output
     assert fake.calls == [("tts", {"ref_audio": "UklGRg==", "ref_text": "hello there"})]  # no instruct
     assert fake.model == "Qwen/Clone"  # not the loaded OmniVoice: the device refuses its clone
+
+
+def test_image_edits_pictures_given_with_i(fake, tmp_path):
+    (tmp_path / "a.png").write_bytes(b"A")
+    (tmp_path / "b.jpg").write_bytes(b"B")
+    r = run("image", "-m", "Edit", "-i", "a.png", "--seed", "1", "make it winter")
+    assert r.exit_code == 0 and "may ignore" not in r.output
+    assert fake.calls[-1][1]["image"] == "data:image/png;base64,QQ==" and "images" not in fake.calls[-1][1]
+    run("image", "-m", "Edit", "-i", "a.png", "-i", "b.jpg", "both")
+    assert fake.calls[-1][1]["images"] == ["data:image/png;base64,QQ==", "data:image/jpeg;base64,Qg=="]
+
+
+def test_image_warns_when_the_model_takes_no_pictures_and_caps_at_ten(fake, tmp_path):
+    (tmp_path / "a.png").write_bytes(b"A")
+    r = run("image", "-m", "z/Image", "-i", "a.png", "x")
+    assert r.exit_code == 0 and "may ignore them" in r.output and "image" in fake.calls[-1][1]
+    r = CliRunner().invoke(cli_mod.cli, ["image", *["-i", "a.png"] * 11, "x"])
+    assert r.exit_code == 2 and "at most 10" in r.output

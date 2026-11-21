@@ -23,6 +23,7 @@ from typing import Any
 
 import httpx
 
+from tai import hfimport
 from tai.config import Settings
 
 
@@ -48,11 +49,15 @@ def _message(e: Any) -> str:
     return str(e.get("message") or e) if isinstance(e, dict) else str(e)
 
 
-def _err(r: httpx.Response) -> TiinyError:
+def _body(r: httpx.Response) -> Any:
     try:
-        body = r.json()
+        return r.json()
     except ValueError:
-        body = r.text
+        return r.text
+
+
+def _err(r: httpx.Response) -> TiinyError:
+    body = _body(r)
     msg = body
     if isinstance(body, dict):
         e = body.get("error")
@@ -167,6 +172,34 @@ class TiinyClient:
         except httpx.ReadTimeout as e:
             raise TiinyError(f"No progress from the device for {DOWNLOAD_IDLE_TIMEOUT:.0f}s while downloading "
                              f"{model_id}. Check `tai models`; the device may still be downloading.") from e
+
+    def import_toolkits(self) -> list[dict]:
+        """The converters the device can import Hugging Face models with (``display_name``/``id``,
+        ``compatibility``). From the TiinyOS app (2026-11-21), like the two below."""
+        return self._json("GET", "/api/v1/models/import/toolkits").get("toolkits") or []
+
+    def import_inspect(self, hf_url: str) -> dict:
+        """What the device says about importing a Hugging Face model (``hfimport.Inspection``)."""
+        r = self.http.post("/api/v1/models/import/inspect", json={"hf_url": hf_url}, timeout=60.0)
+        if r.status_code >= 400:
+            raise TiinyError(f"can't import {hf_url}: {hfimport.error_text(_body(r))}")
+        return r.json()
+
+    def import_model(self, request: dict) -> Iterator[dict]:
+        """Start an import (``Inspection.request``) and follow it: yields progress events until done."""
+        timeout = httpx.Timeout(30.0, connect=CONNECT_TIMEOUT, read=DOWNLOAD_IDLE_TIMEOUT)
+        try:
+            for event, data in self._sse("POST", "/api/v1/models/import", json=request, timeout=timeout):
+                ev = _launch_event(event, data)
+                state = hfimport.event_state(event, ev)
+                if state == "error":
+                    raise TiinyError(f"import failed: {hfimport.error_text(ev.get('error') or ev)}")
+                yield ev
+                if state == "done":
+                    return
+        except httpx.ReadTimeout as e:
+            raise TiinyError(f"No progress from the device for {DOWNLOAD_IDLE_TIMEOUT:.0f}s while importing. "
+                             "Check `tai status`; the device may still be working on it.") from e
 
     def downloading(self) -> list[dict]:
         """Catalog rows of models the device is downloading right now (``progress`` in %)."""

@@ -18,6 +18,8 @@ from pathlib import Path
 
 import click
 
+from tai.chat import data_url
+
 
 def bundle(param: str, cls: type, *fields: str):
     def decorate(f):
@@ -194,11 +196,16 @@ class ImageOptions:
     guidance: float | None = None
     negative: str | None = None
     extra: dict = field(default_factory=dict)  # -x fields, over the ones above
+    images: tuple[Path, ...] = ()  # pictures to start from (editing): one as ``image``, more as ``images``
 
     def request(self, seed: int) -> dict:
         fields = {"size": self.size, "seed": seed, "steps": self.steps,
-                  "guidance_scale": self.guidance, "negative_prompt": self.negative}
+                  "guidance_scale": self.guidance, "negative_prompt": self.negative, **self._images()}
         return merge({k: v for k, v in fields.items() if v is not None}, self.extra)
+
+    def _images(self) -> dict:
+        uris = [data_url(p) for p in self.images]
+        return {"image": uris[0]} if len(uris) == 1 else {"images": uris} if uris else {}
 
 
 @dataclass(frozen=True)

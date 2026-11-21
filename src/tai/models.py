@@ -17,6 +17,7 @@ TASK_BY_TYPE = {
     "Text Generation": "chat",
     "Image-Text-to-Text": "chat",
     "Text-to-Image": "image",
+    "Image-to-Image": "image",  # the TiinyOS app's name for an imported image-editing model
     "Text-to-Speech": "tts",
     "ASR": "asr",
     "Text Embedding": "embed",
@@ -75,6 +76,11 @@ class Model:
     @property
     def vision(self) -> bool:
         return "Image" in self.inputs
+
+    @property
+    def edits(self) -> bool:
+        """Says it takes pictures in (an image model that can edit). Unverified: no edit model seen yet."""
+        return self.vision or self.type == "Image-to-Image"
 
     @classmethod
     def from_api(cls, d: dict) -> Model:

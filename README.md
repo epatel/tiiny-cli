@@ -74,6 +74,7 @@ tai history                 # list sessions; `tai history show 3`, `tai history 
 tai history clear           # delete all sessions and the agent's prompt history
 
 tai image "a fox in the snow, watercolor" -o fox.png --size 1024x1024 --open
+tai image -i fox.png "the same fox in summer" -m <editing model>   # edit pictures (-i up to 10 times)
 tai tts "Hello there" -i "female, british accent" --play
 tai tts "Hej, hur mår du?" -x language=sv          # -x KEY=VALUE: any option tai has no flag for
 tai tts "Good morning" --clone me.wav --clone-text "the words in me.wav"   # in your voice (Qwen3-VoiceClone; VibeVoice: -m vibevoice, no --clone-text)
@@ -95,6 +96,7 @@ tai load qwen3.6            # pre-load; tai unload --all
 tai download                # store models not on the device; tai download kokoro
 tai update                  # models with a newer version in the store; tai update kokoro
 tai rm kokoro               # delete a model from the device (asks first)
+tai import acme/Model-7B     # import a Hugging Face model (--check: only ask if it can; no arg: converters)
 tai info omni               # what a model is (incl. context window) + the options it reports (--json, --no-load)
 tai config set default.chat coder              # preferred model per task
 tai config set think off                       # default reasoning mode
@@ -224,6 +226,13 @@ TAI_URL=https://host/tai TAI_API_KEY=… tai chat    # anywhere else (or --url; 
 The server forwards the device API after checking the key, and never shares the device key. It listens on 127.0.0.1. Point nginx at it, e.g. `location /tai/ { proxy_pass http://127.0.0.1:8798; }`; the server ignores the `/tai` prefix by itself. Turn off buffering and raise timeouts for streaming and long jobs. See `cards/serve.md` for the snippet. Sessions and settings stay on each client. Because the server only forwards, a newer client normally works through an older server; `tai --version` on a client also shows the server's build.
 
 ## Development
+
+### Setup
+Setup steps live in [`setup-todo-list.md`](setup-todo-list.md). An AI agent can run them, and every step also reads as plain manual instructions.
+With Claude Code: `/project-setup` (set up) · `/project-setup doctor` (re-check after a pull that changed the list).
+With any other agent: *"Set up this project using setup-todo-list.md"*.
+
+By hand: Python 3.11+ for development (tai runs on 3.10, but the pinned aihealth dev tool needs 3.11), then `make setup` (`PYTHON=python3.12` if `python3` is older) and optionally `make link`.
 
 ```sh
 make test    # unit tests (mocked, no device needed)

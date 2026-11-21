@@ -35,6 +35,8 @@ def run(monkeypatch, tmp_path, *args, columns=120):
     monkeypatch.setattr(usage, "today", lambda: date(2026, 11, 20))  # a Friday
     monkeypatch.setenv("TAI_HOME", str(tmp_path))
     monkeypatch.setenv("COLUMNS", str(columns))
+    # `out` is made at import; with COLUMNS already set then (as in a hook's shell), rich keeps that width
+    monkeypatch.setattr(cli_mod.out, "_width", columns)
     return client, CliRunner().invoke(cli_mod.cli, ["usage", *args])
 
 

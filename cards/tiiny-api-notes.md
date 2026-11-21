@@ -18,7 +18,7 @@ A digest of the community notes at https://github.com/thezolon/tiiny-api-notes (
 ## Endpoints tai doesn't use yet (all on port 80, Bearer key)
 
 - **Models:** `GET /api/v1/models/{id}/unload_candidate` returns the device's own swap plan (`unload_required`, `model_id[]`, `npu_required/available`). `POST /api/v1/models/unload_all`. `POST /api/v1/models/{id}/launch` (async, poll `running`) as an alternative to `launch/stream`. WebSockets `/api/v1/models/running/ws` and `/api/v1/models/npu/status/ws` for live status (**app**). `?including_downloading=true` shows download progress. The notes URL-encode ids (`Qwen%2FQwen3-…`); tai sends the raw slash, which also works.
-- **Images:** `/v1/images/generations` also takes `negative_prompt`, `seed`, `steps`, `guidance_scale`, and **editing** via `image` (one data URI) or `images` (up to 10) with an edit-capable model. `n > 1` fails: one image per request.
+- **Images:** `/v1/images/generations` also takes `negative_prompt`, `seed`, `steps`, `guidance_scale`, and **editing** via `image` (one data URI) or `images` (up to 10) with an edit-capable model (tai: `tai image -i FILE`, repeatable; not yet run live, and no catalog field seen that marks a model as editing: tai warns unless its `input` lists Image or its type is `Image-to-Image`). `n > 1` fails: one image per request.
 - **OCR:** `POST /v1/ocr?model=<id>` `{"input": data URI, "response_format": "json"}` → `data[0].text` (PP-OCRv6 works; GLM-OCR only on its own container port with the prompt `Text Recognition:`).
 - **Rerank:** `POST /v1/rerank {model, query, documents[]}` (**docs**).
 - **Music:** `/v1/music/*` (Foundation-1 loops via `/generate/wav`; SongGeneration via `/generate/preview` + `/resume`).
