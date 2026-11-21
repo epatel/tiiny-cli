@@ -109,6 +109,8 @@ tai config set show_thinking off               # tai chat: hide the reasoning te
 
 Models can be named by full id, display name, or any unique part of either (`coder`, `z-image`, `omni`).
 
+To choose what to download, browse the [Tiiny Model Store catalog](https://epatel.github.io/tiiny-models/) ([source](https://github.com/epatel/tiiny-models)): every store model with a description, benchmark numbers and sample images or audio, plus its `tai download` command.
+
 `-x KEY=VALUE` (repeatable) sends a field tai has no flag for: in the request body for `ask`,
 `chat`, `image` and `embed`, inside `config` for `tts`, as a form field for `asr`. `a.b=1`
 nests, and values are JSON when they parse (`temperature=0.2`, `stop='["\n"]'`), else text.
