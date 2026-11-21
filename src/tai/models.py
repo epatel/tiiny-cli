@@ -123,6 +123,17 @@ def gigabytes(n: int | None) -> str:
     return f"{n / 1e9:.1f} GB" if n else ""
 
 
+def fit_columns(widths: list[int], drop_order: list[int], room: int) -> set[int]:
+    """Which columns to show in ``room`` cells: drop columns in ``drop_order`` until the rest fit.
+    ``widths`` are the columns' widest cells; each column also takes 2 cells of padding."""
+    shown = set(range(len(widths)))
+    for i in drop_order:
+        if sum(widths[j] + 2 for j in shown) <= room:
+            break
+        shown.discard(i)
+    return shown
+
+
 SORTS = ("size", "name")
 
 

@@ -130,3 +130,22 @@ def test_models_show_the_version_and_mark_updates(fake, monkeypatch):
     assert "20261102" in coder and "↑" not in coder
     data = json.loads(run("models", "--json").stdout)
     assert {m["id"]: m["update"] for m in data} == {"k2/Voice": True, "q/Coder": False}
+
+
+def test_models_in_a_narrow_terminal_leave_columns_out_instead_of_cutting_them(fake, monkeypatch):
+    rows = [{**MODELS[1], "id": "Qwen/Qwen3.8-27B-heretic-ara-Turbo", "display_name": "Qwen3.8-27B-heretic-ara-Turbo",
+             "type": "Image-Text-to-Text", "params": "27B", "total_size": 18_700_000_000, "npu_usage": 59,
+             "context_window": 262144, "version_label": "20261013"},
+            {**MODELS[0], "display_name": "Kokoro-82M", "params": "82M", "total_size": 300_000_000,
+             "version_label": "20261102"}]
+    monkeypatch.setattr(fake, "models", lambda: rows)
+    for width in (80, 200):
+        monkeypatch.setattr(cli_mod.out, "_width", width)
+        out = run("models").output
+        assert all(len(line) <= width for line in out.splitlines())
+        for whole in ("18.7 GB", "0.3 GB", "59%", "27B", "Image-Text-to-Text", "Kokoro-82M"):
+            assert whole in out, (width, whole)
+    assert "…" not in out and "Qwen/Qwen3.8-27B-heretic-ara-Turbo" in out  # 200 cells: everything fits
+    monkeypatch.setattr(cli_mod.out, "_width", 80)
+    narrow = run("models").output
+    assert "Model ID" not in narrow and "Task" not in narrow

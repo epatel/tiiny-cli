@@ -20,6 +20,7 @@ import httpx
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
+from rich.text import Text
 
 from tai import __version__
 from tai import usage as usage_mod
@@ -31,7 +32,7 @@ from tai.hfimport import HfModel, ImportChoice, ImportOptions, Inspection, event
 from tai.info import catalog_row, render, reported, reports_options
 from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
-from tai.models import (SORTS, Model, ResolveError, build_catalog, gigabytes, in_list_order, match_store, resolve,
+from tai.models import (SORTS, Model, ResolveError, build_catalog, fit_columns, gigabytes, in_list_order, match_store, resolve,
                         short_tokens)
 from tai.options import (AgentRequest, AskOutput, AsrOptions, ChatOptions, ImageOptions, Prompt,
                          Question, SavedFile, SessionRef, TtsConfig, bundle, chat_options, extra_option,
@@ -227,15 +228,39 @@ def models_cmd(app: App, as_json, sort_by):
     if as_json:
         out.print_json(json.dumps([m.__dict__ | {"task": m.task} for m in models]))
         return
-    t = Table(box=None, header_style="bold")
-    for col in ("", "Name", "Type", "Task", "Params", "Size", "NPU", "Context", "Version"):
-        t.add_column(col, no_wrap=True, justify="right" if col in ("Params", "Size", "NPU", "Context") else "left")
-    t.add_column("Model ID", overflow="fold")
-    for m in in_list_order(models, sort_by):
-        t.add_row(*_model_row(m, is_default=defaults.get(f"default.{m.task}") == m.id))
-    out.print(t)
+    rows = [_model_row(m, is_default=defaults.get(f"default.{m.task}") == m.id) for m in in_list_order(models, sort_by)]
+    out.print(_models_table(rows, out.width))
     used = sum(m.npu for m in models if m.loaded)
     out.print(f"[dim]● loaded  ○ not loaded  * your default  ↑ update available — NPU in use: {used}%[/]")
+
+
+MODEL_COLUMNS = ("", "Name", "Type", "Task", "Params", "Size", "NPU", "Context", "Version", "Model ID")
+NUMBER_COLUMNS = {"Params", "Size", "NPU", "Context"}
+# Left out first when the terminal is narrow (Task repeats Type); Name is cut short only as a last resort.
+DROP_FIRST = ("Model ID", "Task", "Version", "Context", "Params", "Type")
+
+
+def _models_table(rows: list[tuple[str, ...]], width: int) -> Table:
+    """The models table in ``width`` cells: whole columns are left out rather than cut short."""
+    widths = [max([len(col)] + [Text.from_markup(r[i]).cell_len for r in rows]) for i, col in enumerate(MODEL_COLUMNS)]
+    name = MODEL_COLUMNS.index("Name")
+    widths_cut = list(widths)
+    widths_cut[name] = min(widths[name], 24)  # Name is cut no shorter than this before columns go
+    shown = sorted(fit_columns(widths_cut, [MODEL_COLUMNS.index(c) for c in DROP_FIRST], width))
+    name_room = width - sum(widths[i] + 2 for i in shown if i != name) - 2
+    t = Table(box=None, header_style="bold")
+    for i in shown:
+        _add_model_column(t, MODEL_COLUMNS[i], widths[i], max(widths_cut[name], name_room))
+    for r in rows:
+        t.add_row(*(r[i] for i in shown))
+    return t
+
+
+def _add_model_column(t: Table, col: str, width: int, name_room: int) -> None:
+    if col == "Name":
+        t.add_column(col, no_wrap=True, overflow="ellipsis", max_width=name_room)
+    else:
+        t.add_column(col, no_wrap=True, min_width=width, justify="right" if col in NUMBER_COLUMNS else "left")
 
 
 def _model_row(m: Model, is_default: bool) -> tuple[str, ...]:
