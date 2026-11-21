@@ -19,6 +19,7 @@ These are standard and used the standard way. There are no cards for them: read 
 
 `make help` lists the targets:
 - Setup: `make setup` (creates `.venv`, installs with dev extras)
+- Project setup lives in setup-todo-list.md. Don't run setup doctor unless asked; suggest it if a failure looks like missing tooling.
 - Live device monitor: `.venv/bin/tai top` (`src/tai/top.py`, curses; `render` is pure and tested in `tests/test_top.py`)
 - Run: `.venv/bin/tai --help` (e.g. `.venv/bin/tai models`, `.venv/bin/tai ask "hi"`, `.venv/bin/tai agent` in a project folder)
 - Test: `make test` (one test: `.venv/bin/pytest tests/test_models.py::test_swap_unloads_the_least_npu_that_makes_room`)

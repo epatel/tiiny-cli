@@ -11,3 +11,5 @@ speech.wav
 video.mp4
 images/
 .env.*
+# per-developer setup progress (project-setup)
+setup-todo-list.local.md
