@@ -1,5 +1,6 @@
 [![CI](https://github.com/epatel/tiiny-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/epatel/tiiny-cli/actions/workflows/ci.yml)
 [![Audit](https://github.com/epatel/tiiny-cli/actions/workflows/audit.yml/badge.svg)](https://github.com/epatel/tiiny-cli/actions/workflows/audit.yml)
+[![Release](https://img.shields.io/github/v/release/epatel/tiiny-cli)](https://github.com/epatel/tiiny-cli/releases/latest)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/epatel/tiiny-cli/badge)](https://scorecard.dev/viewer/?uri=github.com/epatel/tiiny-cli)
 
 <a href="https://claude.ai"><img src="made-with-claude.png" height="32" alt="Made with Claude"></a>
@@ -7,6 +8,8 @@
 # tai
 
 Use every model on your [Tiiny](https://www.tiiny.ai/) from the terminal, over Wi-Fi.
+
+Latest release: [tai 0.2.0](https://github.com/epatel/tiiny-cli/releases/tag/v0.2.0) (what's in it, how to install) · [all releases](https://github.com/epatel/tiiny-cli/releases)
 
 ```
 $ tai models
