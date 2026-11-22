@@ -59,6 +59,8 @@ make setup   # creates .venv and installs tai into it
 make link    # optional: symlink tai into ~/.local/bin (PREFIX=... to change)
 ```
 
+Working on tai itself? See [Development › Setup](#setup): an AI agent can run the setup for you (`/project-setup` in Claude Code).
+
 `tai` reads the device address and auth key from the official `tiiny` CLI's config (`~/.local/tiiny/config.json`), so run `tiiny connect <ip>` and `tiiny login` once. To override, set `TAI_DEVICE`, or set the token with `TIINY_API_KEY` or `TAI_TOKEN`. Put them in the environment, in a `.env` file in the current directory, or in `~/.config/tai/.env` (applies everywhere); the environment wins, then the folder's `.env`.
 
 ## Usage
