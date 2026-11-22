@@ -23,6 +23,7 @@ TASK_BY_TYPE = {
     "Text Embedding": "embed",
     "Image-to-3D": "3d",
     "Text-to-Video": "video",
+    "Music Generation": "music",
 }
 
 LOADED = ("running",)

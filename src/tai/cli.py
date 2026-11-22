@@ -34,6 +34,7 @@ from tai.loader import LoadCancelled, ModelLoader
 from tai.mesh import Mesh3D, MeshOptions
 from tai.models import (SORTS, Model, ResolveError, build_catalog, fit_columns, gigabytes, in_list_order, match_store, resolve,
                         short_tokens)
+from tai.music import MusicJob, MusicOptions
 from tai.options import (AgentRequest, AskOutput, AsrOptions, ChatOptions, ImageOptions, Prompt,
                          Question, SavedFile, SessionRef, TtsConfig, bundle, chat_options, extra_option,
                          generator, merge)
@@ -1132,6 +1133,40 @@ def _check_video(opts: VideoOptions, info: dict) -> None:
     problems = opts.problems(info)
     if problems:
         raise click.UsageError("; ".join(problems))
+
+
+@cli.command()
+@generator("music.wav", "music")
+@click.option("-l", "--lyrics", type=click.File("r"), callback=lambda ctx, param, f: f.read() if f else "",
+              help="Lyrics file ('-' reads stdin); [verse], [chorus] lines mark the sections.")
+@click.option("--seconds", type=click.FloatRange(1), help="Length (default: the model's own; SongGeneration 60).")
+@click.option("--instrumental", is_flag=True, help="No vocals, so no lyrics needed (not YuE2).")
+@click.option("--steps", type=click.IntRange(1), help="Sampling steps (default: the model's own).")
+@click.option("--style", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="10-30 s of music whose feel the song borrows (SongGeneration, AceStep).")
+@extra_option("in the music config (e.g. temperature=0.9, ace_step.bpm=120)")
+@bundle("opts", MusicOptions, "lyrics", "seconds", "instrumental", "steps", "seed", "style", "extra")
+@pass_app
+def music(app: App, req: Prompt, saved: SavedFile, opts: MusicOptions):
+    """Make music in the style PROMPT describes: a song with --lyrics (YuE2, AceStep,
+    SongGeneration) or an instrument loop (Foundation-1). Songs take many minutes.
+    -o song.mp3 saves an MP3 when the device keeps the song as a session."""
+    m = app.model_for("music", req.model)
+    problems = opts.problems(m.id)
+    if problems:
+        raise click.UsageError("; ".join(problems))
+    app.ensure_loaded(m)
+    opts = replace(opts, seed=_seed(opts.seed))
+    job = MusicJob(app.client, notice=lambda s: err.print(f"[yellow]{s}[/]"))
+    started = time.monotonic()
+    try:
+        with err.status(f"Composing with {m.name}…"):
+            song = job.make(m.id, req.text, opts, saved.output.suffix.lower().lstrip("."))
+    except KeyboardInterrupt:
+        err.print(f"[yellow]The device keeps composing; `tai unload {m.name}` stops it.[/]")
+        raise
+    output = saved.output if saved.output.suffix.lower() == f".{song.format}" else saved.output.with_suffix(f".{song.format}")
+    _save(replace(saved, output=output), song.audio, f"seed {opts.seed}, {time.monotonic() - started:.0f}s")
 
 
 @cli.command("3d")

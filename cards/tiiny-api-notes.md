@@ -21,7 +21,7 @@ A digest of the community notes at https://github.com/thezolon/tiiny-api-notes (
 - **Images:** `/v1/images/generations` also takes `negative_prompt`, `seed`, `steps`, `guidance_scale`, and **editing** via `image` (one data URI) or `images` (up to 10) with an edit-capable model (tai: `tai image -i FILE`, repeatable; not yet run live, and no catalog field seen that marks a model as editing: tai warns unless its `input` lists Image or its type is `Image-to-Image`). `n > 1` fails: one image per request.
 - **OCR:** `POST /v1/ocr?model=<id>` `{"input": data URI, "response_format": "json"}` → `data[0].text` (PP-OCRv6 works; GLM-OCR only on its own container port with the prompt `Text Recognition:`).
 - **Rerank:** `POST /v1/rerank {model, query, documents[]}` (**docs**).
-- **Music:** `/v1/music/*` (Foundation-1 loops via `/generate/wav`; SongGeneration via `/generate/preview` + `/resume`).
+- **Music:** `/v1/music/*` (Foundation-1 loops via `/generate/wav`; SongGeneration via `/generate/preview` + `/resume`). Used by `tai music` since 2026-11-22 (details in device-api).
 - **Video** (MiniMax-H3-Turbo, 0.1.38+): `POST /v1/videos` → poll `GET /v1/videos/{id}` → `GET …/content` (MP4). Fixed canvases only, max 7 s, minutes to an hour to render.
 - **Text classification ("Jev / System One", 0.1.39+):** `POST /v1/systemone {model, state, questions}` with `noul` (yes/no), `choice` and `score` question types, up to 64 per request. Answers come back as probabilities, with no text generated.
 - **Other API styles on the same port:** Anthropic `POST /v1/messages` (accepts `x-api-key`) and Ollama `/api/chat`, `/api/tags`. Host names `openai.api.tiiny`, `anthropic.api.tiiny`, `ollama.api.tiiny`, `api.tiiny` all map to port 80. Model `default` = the loaded chat model.

@@ -83,6 +83,8 @@ tai embed "first text" "second text"           # JSON lines
 tai 3d toy.png --faces 200000 -o toy.glb       # ~15 min, image → textured mesh
 tai video "a fox in the snow" --seconds 2 --steps 4 --open   # clip with sound, ~7 min
 tai video -i fox.png "the fox starts running"  # animate a start frame; max 7 s, 4 sizes
+tai music "synth-pop, female vocals" -l lyrics.txt -m yue2 -o song.mp3   # a song, many minutes
+tai music "warm rhodes loop, 90 bpm" -m foundation --seconds 8           # an instrument loop
 
 tai agent                   # coding agent (full-screen) in the current folder; see below
 tai agent "fix the failing test"   # start with a task; -c continues here

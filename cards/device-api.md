@@ -43,6 +43,7 @@ Model ids contain a slash (`Qwen/Qwen3-Coder-Next`), and the slash goes straight
 | tts | `POST /v1/synthesize` `{model, text, config?}` | Returns JSON `{audio_data: base64 WAV 24 kHz mono, duration, …}`. Voice design goes in as `config: {instruct: "female, british accent"}`; a top-level `instruct` is rejected. **`/v1/audio/speech` returns 500 "upstream TTS model failed" for OmniVoice, so don't use it.** Valid instruct words: `male/female`, age groups, `low/high pitch`, `whisper`, accents |
 | asr | `POST /v1/audio/transcriptions` | multipart `model`, `file`, optional `language`; returns `{text}` |
 | video | `POST /v1/videos` → `GET /v1/videos/{id}` → `GET /v1/videos/{id}/content` | MiniMax-H3-Turbo. OpenAI-style job; see "Video" below |
+| music | `POST /v1/music/generate/wav` (loops) · `POST /v1/music/generate[/preview\|/resume]` (songs) | Foundation-1 loops; YuE2, AceStep, SongGeneration songs. See "Music" below; not run live yet |
 | 3d | `/v1/3d/*` | The gateway maps this onto the TRELLIS container's `/v1/*`. Multi-stage pipeline: shape → texture → (simplify) → export, polled per task. Any 5xx during polling (e.g. 504) is transient |
 
 ### Asking a model for its options (`tai info`)
@@ -52,6 +53,7 @@ Only some models describe themselves, and only while loaded (checked 2026-11-09)
 - chat and TTS: `GET /v1/capabilities?model=<id>`. Chat gives modalities, `supported`, `thinking` (no sampling params; those are plain OpenAI fields). OmniVoice gives `capabilities`, `duration` limits, `instruct_list` and `instruct_exclusive_groups` (pick at most one per group).
 - 3D: `GET /v1/3d/capabilities` (`?model=` when two 3D models are loaded): stages, qualities, inputs and params per stage, `stage_specs`.
 - Image, ASR, embedding: none. `/v1/capabilities` answers 400 "Model … does not support tts", so `tai info` doesn't call it for them. Not loaded → 404 "is not loaded".
+- Music: `GET /v1/music/info?model=<id>` (`service_name`, `config_schema`, `default_config`, per-task `defaults`; Tiiny Studio, unchecked).
 - Video: `GET /v1/video/info?model=<id>` (canvases, step options, fps, keyframes, audio).
 
 `tai info` asks before loading a model to query it (`-y` loads, `--no-load` never does).
@@ -88,6 +90,15 @@ MiniMax-H3-Turbo (type Text-to-Video, 49% NPU, text or a start image → MP4 wit
 - The model is compiled for fixed shapes: only the sizes in `canvases` (1344x768, 768x1344, 832x480, 480x832) and at most 7 s. The submit accepts anything and the job fails later, so `VideoOptions.problems` checks `seconds` before loading and size/steps against `/v1/video/info` after.
 - Times: 2 s at 832x480 with 4 steps ≈ 7 min (7m17s on ours, 2026-11-09: a 2.37 s clip, H.264 24 fps + 32 kHz stereo AAC); 5 s at 1344x768 ≈ 32 min. **The gateway fails a job after 1 hour** (`GENERATION_TIMEOUT`) but the NPU keeps rendering; `DELETE /v1/videos/{id}` doesn't stop it, unloading the model does (slowly, and the next launch may answer 409 `cleanup_failed`: just retry). Ctrl-C in `tai video` says so.
 - tai always sends a seed (random unless `--seed`) and prints it, as for images.
+
+### Music (`tai music`, `src/tai/music.py`)
+
+From Tiiny Studio's code (`rust/studio-core/src/media/music.rs`, read 2026-11-22); **not yet run on our device**, so check these when it first runs.
+- Loop models (Foundation-1, by id): `POST /v1/music/generate/wav {model, prompt, config {seconds_total, steps, cfg_scale, seed}}` answers with the WAV bytes.
+- Song models: `config {caption, lyrics, generation_type: mixed|bgm|…, seconds_total, seed, steps, temperature, top_k, top_p, reference_audio_base64}`; AceStep's own settings go nested in `config.ace_step {bpm, key_scale, time_signature, vocal_language, negative_prompt}` (at the top level: "Extra inputs are not permitted"). Answer: `{success, audio_data (base64 WAV), session_id}`, sometimes `audio_outputs {name: base64}` stems (tai ignores them).
+- YuE2 and AceStep: one plain `POST /v1/music/generate` writes the whole song at `seconds_total` (no preview/resume: "preview generation is not implemented"). YuE2 only makes the full mix: `generation_type` must be `mixed`, so lyrics are required.
+- SongGeneration (`service_name` starts with `SongGeneration`): the gateway's plain `/generate` fails ("Session not found", 0.1.35), so `/generate/preview` with `preview_seconds` = the length (default 60); from 240 s an 8-second preview, then `/generate/resume {session_id}` renders the full arrangement (`/resume` ignores `seconds_total`). Tiiny Studio uses the model's own port directly over Wi-Fi instead; tai doesn't.
+- A song takes many minutes; a quiet connection can drop before the answer comes. `GET /v1/music/sessions` lists `{session_id, model_id, status, created_at, progress}`, and `GET /v1/music/sessions/{id}/download?format=mp3` gives the finished song, so `MusicJob` waits there (every 30 s, up to 1 h) after a dropped answer. `-o x.mp3` downloads the session's MP3 too.
 
 ## Rediscovering the API
 

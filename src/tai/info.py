@@ -20,6 +20,7 @@ REPORTERS: dict[str, Callable[[TiinyClient, str], dict]] = {
     "tts": lambda c, model_id: c.capabilities(model_id),
     "3d": lambda c, model_id: c.task3d_capabilities(model_id),
     "video": lambda c, model_id: c.video_info(model_id),
+    "music": lambda c, model_id: c.music_info(model_id),
 }
 
 # keys that repeat the catalog row or say nothing useful

@@ -366,6 +366,32 @@ class TiinyClient:
     def video_content(self, video_id: str) -> bytes:
         return self._bytes(f"/v1/videos/{video_id}/content")
 
+    # -- music: loops (Foundation-1) and songs; see tai.music ----------------
+    def music_info(self, model: str) -> dict:
+        """A loaded music model's `service_name`, `config_schema`, `default_config`, per-task `defaults`."""
+        d = self._json("GET", "/v1/music/info", params={"model": model})
+        return d["data"] if isinstance(d.get("data"), dict) else d
+
+    def music_loop(self, model: str, prompt: str, config: dict) -> bytes:
+        """An instrument loop as WAV; ``config``: seconds_total, steps, cfg_scale, seed."""
+        r = self.http.post("/v1/music/generate/wav", json={"model": model, "prompt": prompt, "config": config})
+        if r.status_code >= 400:
+            raise _err(r)
+        return r.content
+
+    def music_song(self, model: str, config: dict, route: str = "", session_id: str | None = None) -> dict:
+        """``POST /v1/music/generate{route}`` (route "", "/preview" or "/resume"):
+        `success`, `audio_data` (base64 WAV), `session_id`."""
+        body = {"model": model, "config": config, **({"session_id": session_id} if session_id else {})}
+        return self._json("POST", f"/v1/music/generate{route}", json=body)
+
+    def music_sessions(self) -> list[dict]:
+        """The device's music sessions: `session_id`, `model_id`, `status`, `created_at`, `progress`."""
+        return self._json("GET", "/v1/music/sessions").get("sessions") or []
+
+    def music_download(self, session_id: str, fmt: str = "mp3") -> bytes:
+        return self._bytes(f"/v1/music/sessions/{session_id}/download?format={fmt}")
+
     def _bytes(self, path: str) -> bytes:
         r = self.http.get(path)
         if r.status_code >= 400:
